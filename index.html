@@ -35,15 +35,41 @@
     </div>
 
     <!-- SEZIONE 2: DATI ESTRATTI -->
-    <div id="step-dati" class="hidden">
-        <h3>Controlla i Dati</h3>
-        <label>Nome e Cognome:</label>
-        <input type="text" id="campo-nome" style="width:100%; margin-bottom:10px;">
-        <label>Documento n.:</label>
-        <input type="text" id="campo-doc" style="width:100%; margin-bottom:10px;">
-        <button onclick="vaiAllaFirma()">Dati Corretti, vai alla Firma</button>
+    <!-- SEZIONE 2: DATI ESTRATTI -->
+<div id="step-dati" class="hidden">
+    <h3>Verifica Dati Ospite</h3>
+    
+    <div class="input-group">
+        <label>Cognome</label>
+        <input type="text" id="campo-cognome">
+    </div>
+    <div class="input-group">
+        <label>Nome</label>
+        <input type="text" id="campo-nome">
+    </div>
+    <div class="input-group">
+        <label>Data di Nascita</label>
+        <input type="text" id="campo-nascita">
+    </div>
+    <div class="input-group">
+        <label>Sesso (M/F)</label>
+        <input type="text" id="campo-sesso">
+    </div>
+    <div class="input-group">
+        <label>Cittadinanza (ISO)</label>
+        <input type="text" id="campo-cittadinanza">
+    </div>
+    <div class="input-group">
+        <label>N. Documento</label>
+        <input type="text" id="campo-doc">
+    </div>
+    <div class="input-group">
+        <label>Comune/Stato Residenza</label>
+        <input type="text" id="campo-residenza">
     </div>
 
+    <button onclick="vaiAllaFirma()">Conferma e Firma</button>
+</div>
     <!-- SEZIONE 3: PRIVACY E FIRMA -->
     <div id="step-firma" class="hidden">
         <h3>Informativa Privacy</h3>
@@ -86,87 +112,101 @@
             ctx.filter = 'contrast(1.5) grayscale(1)';
             ctx.drawImage(img, 0, 0, canvasElaborazione.width, canvasElaborazione.height);
 
-            try {
-                // Esecuzione OCR
-                const risultato = await Tesseract.recognize(canvasElaborazione, 'ita', {
-                    logger: m => {
-                        if(m.status === 'recognizing text') {
-                            statoOcr.innerText = `Analisi: ${Math.round(m.progress * 100)}%`;
-                        }
-                    }
-                });
-
-                // Chiamiamo la funzione di analisi (corretta con il nome giusto)
-                const datiFinali = elaboraTestoDocumento(risultato.data.text);
-                
-                // Mostriamo i risultati a schermo
-                document.getElementById('step-scansione').classList.add('hidden');
-                document.getElementById('step-dati').classList.remove('hidden');
-                
-                document.getElementById('campo-nome').value = datiFinali.nomeCognome;
-                document.getElementById('campo-doc').value = datiFinali.numeroDoc;
-
-                statoOcr.innerText = "";
-            } catch (errore) {
-                console.error(errore);
-                statoOcr.innerText = "❌ Errore durante la lettura.";
+           try {
+    const risultato = await Tesseract.recognize(canvasElaborazione, 'ita', {
+        logger: m => {
+            if(m.status === 'recognizing text') {
+                statoOcr.innerText = `Analisi: ${Math.round(m.progress * 100)}%`;
             }
+        }
+    });
+
+   // ... dentro il try dell'OCR ...
+const ospite = elaboraTestoDocumento(risultato.data.text);
+
+// Mostriamo la sezione dati
+document.getElementById('step-scansione').classList.add('hidden');
+document.getElementById('step-dati').classList.remove('hidden');
+
+// Popoliamo i campi
+document.getElementById('campo-cognome').value = ospite.cognome;
+document.getElementById('campo-nome').value = ospite.nome;
+document.getElementById('campo-nascita').value = ospite.nascita;
+document.getElementById('campo-sesso').value = ospite.sesso;
+document.getElementById('campo-cittadinanza').value = ospite.cittadinanza;
+document.getElementById('campo-doc').value = ospite.numDoc;
+document.getElementById('campo-residenza').value = ospite.comuneRes;
+
+    statoOcr.innerText = "";
+} catch (errore) {
+    console.error(errore);
+    statoOcr.innerText = "❌ Errore durante la lettura.";
+}
         };
         img.src = URL.createObjectURL(file);
     };
 
     // 3. Logica di estrazione dati (Internazionale + MRZ)
-   function elaboraTestoDocumento(testo) {
-    // Pulizia: rendiamo tutto maiuscolo e dividiamo in righe
-    const righe = testo.toUpperCase().split('\n').map(r => r.trim());
-    
+  function elaboraTestoDocumento(testo) {
+    // Rendiamo tutto maiuscolo e creiamo un array di righe pulite
+    const righe = testo.toUpperCase().split('\n').map(r => r.trim()).filter(r => r.length > 2);
+    const testoUnito = righe.join(" ");
+
     let ospite = {
-        nome: "", cognome: "", cittadinanza: "", 
-        nascita: "", sesso: "", numDoc: "", 
-        tipoDoc: "Identità", scadenza: "", comuneRes: ""
+        nome: "", cognome: "", nascita: "", sesso: "",
+        cittadinanza: "", numDoc: "", comuneRes: "", cf: ""
     };
 
-    // --- LIVELLO 1: LOGICA MRZ (Passaporti e CIE Internazionali) ---
-    // Cerchiamo righe che contengono i caratteri di riempimento '<<<'
-    const righeMRZ = righe.filter(r => r.includes("<<"));
-    
-    if (righeMRZ.length >= 2) {
-        // Se la riga inizia con 'P', è un Passaporto. Se 'I' o 'C', è una Carta d'Identità.
-        if (righeMRZ[0].startsWith("P")) ospite.tipoDoc = "Passaporto";
-        
-        // Estrazione Nazionalità (3 lettere dopo il tipo doc, es: ITA, FRA, USA)
-        ospite.cittadinanza = righeMRZ[0].substring(2, 5);
-        
-        // Estrazione Numero Documento
-        ospite.numDoc = righeMRZ[0].substring(5, 14).replace(/</g, "");
-
-        // Estrazione Nome e Cognome (solitamente nell'ultima riga MRZ)
-        const rigaNomi = righeMRZ[righeMRZ.length - 1];
-        const blocchi = rigaNomi.split("<<");
-        ospite.cognome = blocchi[0].replace(/[PCID<A-Z]{3,5}/, "").trim(); // Pulizia prefissi
-        ospite.nome = blocchi[1] ? blocchi[1].replace(/<+/g, " ").trim() : "";
-    }
-
-    // --- LIVELLO 2: LOGICA PATENTE E DOCUMENTI ITALIANI ---
-    // Cerchiamo il Codice Fiscale (Presente su retro CIE e Patenti IT)
+    // --- 1. ESTRAZIONE DA CODICE FISCALE (Il metodo più affidabile in Italia) ---
     const regexCF = /[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]/;
-    const trovatoCF = testo.match(regexCF);
+    const trovatoCF = testoUnito.match(regexCF);
     if (trovatoCF) {
         ospite.cf = trovatoCF[0];
-        // Se è italiano, possiamo ricavare data nascita e sesso dal CF
-        if (!ospite.nascita) ospite.nascita = decodificaDataCF(trovatoCF[0]);
+        ospite.nascita = decodificaDataCF(trovatoCF[0]);
+        // Il sesso è nel CF: se il giorno è > 40 è Donna, altrimenti Uomo
+        const giornoCF = parseInt(trovatoCF[0].substring(9, 11));
+        ospite.sesso = giornoCF > 40 ? "F" : "M";
     }
 
-    // --- LIVELLO 3: RESIDENZA (Per Pegaso/Questura) ---
-    // Cerchiamo la riga dopo la parola chiave 'RESIDENZA' o 'RESIDENCE'
-    const idxRes = righe.findIndex(r => r.includes("RESIDENZA") || r.includes("ADDRESS"));
-    if (idxRes !== -1 && righe[idxRes + 1]) {
-        ospite.comuneRes = righe[idxRes + 1];
+    // --- 2. ESTRAZIONE MRZ (Per Passaporti e CIE internazionali) ---
+    const righeMRZ = righe.filter(r => r.includes("<<"));
+    if (righeMRZ.length >= 2) {
+        // Numero documento in MRZ (solitamente primi 9 caratteri dopo la sigla stato)
+        ospite.numDoc = righeMRZ[0].substring(5, 14).replace(/</g, "");
+        ospite.cittadinanza = righeMRZ[0].substring(2, 5);
+        
+        // Nomi e Cognomi sono nell'ultima riga MRZ
+        const parteNomi = righeMRZ[righeMRZ.length - 1].split("<<");
+        ospite.cognome = parteNomi[0].replace(/^[A-Z0-9<]+<+/, "").replace(/<+/g, " ").trim();
+        ospite.nome = parteNomi[1] ? parteNomi[1].replace(/<+/g, " ").trim() : "";
     }
+
+    // --- 3. RICERCA PAROLE CHIAVE (Per campi mancanti come Residenza o se MRZ fallisce) ---
+    righe.forEach((riga, i) => {
+        // Cerca Residenza
+        if (riga.includes("RESIDENZA") || riga.includes("INDIRIZZO") || riga.includes("ADDRESS")) {
+            ospite.comuneRes = righe[i+1] || "";
+        }
+        // Cerca Documento se non trovato
+        if (!ospite.numDoc && (riga.includes("CARTA") || riga.includes("DOCUMENT"))) {
+            const matchDoc = riga.match(/[A-Z0-9]{8,10}/);
+            if (matchDoc) ospite.numDoc = matchDoc[0];
+        }
+    });
 
     return ospite;
 }
 
+// Funzione di supporto per la data dal Codice Fiscale
+function decodificaDataCF(cf) {
+    const mesi = {A:'01', B:'02', C:'03', D:'04', E:'05', H:'06', L:'07', M:'08', P:'09', R:'10', S:'11', T:'12'};
+    let anno = cf.substring(6, 8);
+    anno = (parseInt(anno) > 25 ? "19" : "20") + anno; // Gestione secolo
+    const mese = mesi[cf.charAt(8)];
+    let gg = parseInt(cf.substring(9, 11));
+    if (gg > 40) gg -= 40;
+    return `${gg.toString().padStart(2, '0')}/${mese}/${anno}`;
+}
 // Funzione per estrarre la data dal Codice Fiscale
 function decodificaDataCF(cf) {
     const mesi = {A:'01', B:'02', C:'03', D:'04', E:'05', H:'06', L:'07', M:'08', P:'09', R:'10', S:'11', T:'12'};
