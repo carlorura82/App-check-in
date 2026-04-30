@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <!-- Questa riga serve per far vedere bene l'app sui telefoni -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestionale Check-in</title>
+    
+    <!-- Carichiamo le "menti" dell'app: Tesseract per leggere e SignaturePad per la firma -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+
+    <style>
+        /* CSS per rendere l'app moderna e pulita */
+        body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; }
+        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 500px; margin: auto; }
+        h1 { color: #1a73e8; text-align: center; }
+        .hidden { display: none; }
+        input[type="file"] { margin: 20px 0; width: 100%; }
+        #canvas-firma { border: 2px dashed #ccc; border-radius: 10px; background: #fafafa; width: 100%; height: 200px; }
+        button { background: #1a73e8; color: white; border: none; padding: 12px; border-radius: 8px; width: 100%; font-size: 16px; cursor: pointer; margin-top: 10px; }
+        .status { font-style: italic; color: #555; text-align: center; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>Smart Check-in</h1>
+    
+    <!-- SEZIONE 1: SCANSIONE -->
+    <div id="step-scansione">
+        <p>1. Scatta una foto nitida al documento:</p>
+        <input type="file" id="foto-doc" accept="image/*" capture="camera">
+        <div id="stato-ocr" class="status"></div>
+    </div>
+
+    <!-- SEZIONE 2: DATI ESTRATTI -->
+    <div id="step-dati" class="hidden">
+        <h3>Controlla i Dati</h3>
+        <label>Nome e Cognome:</label>
+        <input type="text" id="campo-nome" style="width:100%; margin-bottom:10px;">
+        <label>Documento n.:</label>
+        <input type="text" id="campo-doc" style="width:100%; margin-bottom:10px;">
+        <button onclick="vaiAllaFirma()">Dati Corretti, vai alla Firma</button>
+    </div>
+
+    <!-- SEZIONE 3: PRIVACY E FIRMA -->
+    <div id="step-firma" class="hidden">
+        <h3>Informativa Privacy</h3>
+        <p style="font-size: 12px; color: #666;">Autorizzo il trattamento dei dati per la comunicazione alloggiati e imposta di soggiorno (Pegaso).</p>
+        <canvas id="canvas-firma"></canvas>
+        <button onclick="pulisciFirma()" style="background:#dc3545;">Cancella Firma</button>
+        <button onclick="salvaTutto()" style="background:#28a745; margin-top:20px;">Finalizza Check-in</button>
+    </div>
+</div>
+
+<script>
+    // Inizializziamo gli elementi
+    const inputFoto = document.getElementById('foto-doc');
+    const statoOcr = document.getElementById('stato-ocr');
+    const canvas = document.getElementById('canvas-firma');
+    const signaturePad = new SignaturePad(canvas); // Attiva la firma col dito
+
+    // Funzione che scatta quando selezioni la foto
+    inputFoto.onchange = async function() {
+        const file = inputFoto.files[0];
+        statoOcr.innerText = "Analisi documento in corso...";
+
+        // Avviamo Tesseract per leggere il testo
+        const risultato = await Tesseract.recognize(file, 'ita');
+        const testo = risultato.data.text;
+
+        // Mostriamo la sezione dati e nascondiamo la scansione
+        document.getElementById('step-scansione').classList.add('hidden');
+        document.getElementById('step-dati').classList.remove('hidden');
+        
+        // Inseriamo tutto il testo letto nel campo nome per ora (poi lo puliremo)
+        document.getElementById('campo-nome').value = testo.substring(0, 50); 
+        statoOcr.innerText = "";
+    };
+
+    function vaiAllaFirma() {
+        document.getElementById('step-dati').classList.add('hidden');
+        document.getElementById('step-firma').classList.remove('hidden');
+        // Adatta il canvas alla larghezza della card
+        canvas.width = canvas.offsetWidth;
+        canvas.height = 200;
+    }
+
+    function pulisciFirma() {
+        signaturePad.clear();
+    }
+
+    function salvaTutto() {
+        if (signaturePad.isEmpty()) {
+            alert("Per favore, fai firmare il cliente!");
+        } else {
+            alert("Check-in completato! Dati pronti per Pegaso.");
+            // Qui inseriremo la logica per creare il file per Pegaso
+        }
+    }
+</script>
+
+</body>
+</html>
