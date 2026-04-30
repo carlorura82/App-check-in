@@ -78,7 +78,50 @@
         document.getElementById('campo-nome').value = testo.substring(0, 50); 
         statoOcr.innerText = "";
     };
+function elaboraTestoDocumento(testo) {
+    // Pulizia iniziale: rimuoviamo spazi extra e rendiamo tutto maiuscolo
+    const righe = testo.toUpperCase().split('\n').map(r => r.trim());
+    let risultato = { nomeCognome: "Non trovato", numeroDoc: "Non trovato", nazionalita: "---" };
 
+    // --- LOGICA LIVELLO 1: RICERCA MRZ (Standard Internazionale) ---
+    // Cerchiamo righe che contengono molti caratteri '<<<'
+    const rigaMRZ = righe.find(r => r.includes("<<"));
+
+    if (rigaMRZ) {
+        console.log("MRZ rilevato! Estrazione internazionale...");
+        // Esempio MRZ: I<ITADROSSI<<MARIO<<<<<<<<<<<
+        // Puliamo la riga dai simboli < per estrarre i nomi
+        const parti = rigaMRZ.split('<<');
+        const cognome = parti[0].replace(/[I<A-Z]{3}/, ""); // Rimuove codice nazione iniziale
+        const nome = parti[1] ? parti[1].replace(/<+/g, " ") : "";
+        
+        risultato.nomeCognome = `${cognome} ${nome}`.trim();
+        risultato.nazionalita = rigaMRZ.substring(2, 5); // Le tre lettere della nazione (es: ITA, FRA, USA)
+    } 
+    
+    // --- LOGICA LIVELLO 2: KEYWORDS MULTILINGUA (Se MRZ fallisce) ---
+    else {
+        const keywordsCognome = ["COGNOME", "SURNAME", "NOM", "APELLIDO", "NAME"];
+        
+        for (let i = 0; i < righe.length; i++) {
+            // Se troviamo una qualsiasi parola chiave internazionale
+            if (keywordsCognome.some(key => righe[i].includes(key))) {
+                if (righe[i+1]) {
+                    risultato.nomeCognome = righe[i+1].replace(/[^A-Z ]/g, ""); // Solo lettere
+                    break;
+                }
+            }
+        }
+    }
+
+    // --- RICERCA NUMERO DOCUMENTO INTERNAZIONALE ---
+    // Cerca pattern comuni: 9 caratteri alfanumerici (comune in molti passaporti)
+    const regexDocUniversale = /[A-Z0-9]{8,10}/;
+    const matchDoc = testo.match(regexDocUniversale);
+    if (matchDoc) risultato.numeroDoc = matchDoc[0];
+
+    return risultato;
+}
     function vaiAllaFirma() {
         document.getElementById('step-dati').classList.add('hidden');
         document.getElementById('step-firma').classList.remove('hidden');
