@@ -121,48 +121,79 @@
         img.src = URL.createObjectURL(file);
     };
 
-    function parserMRZ(testo) {
-        // Dividiamo in righe e cerchiamo quelle con almeno 2 simboli <<
-        const righe = testo.split('\n').map(r => r.replace(/\s/g, '')).filter(r => r.includes('<<'));
+    // --- FUNZIONE DI PULIZIA PROFONDA (Il "Filtro Sanitario") ---
+function pulisciDato(testo, tipo) {
+    let pulito = testo.toUpperCase().trim();
+    
+    switch(tipo) {
+        case 'NUM_DOC':
+            // Rimuove tutto ciò che non è lettera o numero (pulisce "AN ZOLDI" in "ANZOLDI")
+            // E corregge lo zero letto come 'O'
+            return pulito.replace(/[^A-Z0-9]/g, '').replace(/O/g, '0');
         
-        let d = { cognome: "", nome: "", nascita: "", sesso: "", cittadinanza: "ITA", numDoc: "" };
-
-        // Trova la riga che contiene dati numerici (Data di nascita e sesso)
-        let rigaDati = righe.find(r => /\d{6}[MF]/.test(r));
-        // Trova la riga che contiene i nomi
-        let rigaNomi = righe.find(r => r.startsWith('I') || r.startsWith('C') || r.startsWith('P') || r.startsWith('A'));
-
-        if (rigaNomi) {
-            // Pulizia Numero Documento (Primi 9 caratteri della riga identità)
-            d.numDoc = rigaNomi.substring(2, 11).replace(/</g, '').replace(/O/g, '0');
-            
-            // Estrazione Nomi e Cognomi (Cerchiamo il separatore <<)
-            let sezioneNomi = rigaNomi.substring(5); 
-            if (sezioneNomi.includes('<<')) {
-                let parti = sezioneNomi.split('<<');
-                d.cognome = parti[0].replace(/</g, ' ').trim();
-                d.nome = parti[1] ? parti[1].replace(/</g, ' ').trim() : "";
-            }
-        }
-
-        if (rigaDati) {
-            // DATA DI NASCITA: Formato MRZ è AAMMGG
-            let matchDati = rigaDati.match(/(\d{6})([MF])/);
-            if (matchDati) {
-                let dataGrezza = matchDati[1];
-                let aa = dataGrezza.substring(0, 2);
-                let mm = dataGrezza.substring(2, 4);
-                let gg = dataGrezza.substring(4, 6);
+        case 'DATA':
+            // Tiene solo i numeri. Se legge "77/10/20221", estraiamo solo le cifre necessarie
+            let cifre = pulito.replace(/\D/g, '');
+            if (cifre.length >= 6) {
+                let gg = cifre.substring(4, 6);
+                let mm = cifre.substring(2, 4);
+                let aa = cifre.substring(0, 2);
                 
-                // Correzione automatica secolo
-                let anno = (parseInt(aa) > 25) ? "19" + aa : "20" + aa;
-                d.nascita = `${gg}/${mm}/${anno}`;
-                d.sesso = matchDati[2];
+                // Validazione logica: il giorno non può essere 77
+                if (parseInt(gg) > 31) gg = "01"; // Fallback di sicurezza
+                if (parseInt(mm) > 12) mm = "01";
+                
+                let annoCompleto = (parseInt(aa) > 25) ? "19" + aa : "20" + aa;
+                return `${gg}/${mm}/${annoCompleto}`;
             }
+            return "";
+
+        case 'TESTO':
+            // Rimuove numeri e simboli dai nomi/cognomi (pulisce "OLDI7" in "OLDI")
+            return pulito.replace(/[^A-Z\s]/g, '').trim();
+            
+        default:
+            return pulito;
+    }
+}
+
+// --- PARSER MRZ AGGIORNATO E POTENZIATO ---
+function parserMRZ(testoGrezzo) {
+    // Dividiamo il testo in righe e puliamo gli spazi estremi
+    const righe = testoGrezzo.split('\n').map(r => r.replace(/\s+/g, '')).filter(r => r.length > 10);
+    
+    let d = { cognome: "", nome: "", nascita: "", sesso: "", cittadinanza: "ITA", numDoc: "" };
+
+    // Cerchiamo la riga che contiene la struttura MRZ (presenza di molti <<)
+    let riga1 = righe.find(r => r.includes('<<') && (r.startsWith('I') || r.startsWith('C') || r.startsWith('A') || r.startsWith('P')));
+    let riga2 = righe.find(r => /\d{6}[MF]/.test(r));
+
+    if (riga1) {
+        // Il numero documento nell'MRZ standard occupa le posizioni 2-11
+        let grezzoDoc = riga1.substring(2, 11);
+        d.numDoc = pulisciDato(grezzoDoc, 'NUM_DOC');
+
+        // Estrazione Cognome e Nome
+        // Saltiamo i primi 5 caratteri (Tipo doc + Stato) e cerchiamo il separatore <<
+        let sezioneIdentita = riga1.substring(5);
+        let parti = sezioneIdentita.split('<<');
+        if (parti.length >= 1) {
+            d.cognome = pulisciDato(parti[0].replace(/</g, ' '), 'TESTO');
+            d.nome = parti[1] ? pulisciDato(parti[1].replace(/</g, ' '), 'TESTO') : "";
         }
-        return d;
     }
 
+    if (riga2) {
+        // La data di nascita è sempre la prima sequenza di 6 numeri nella riga 2
+        let matchNascita = riga2.match(/(\d{6})[MF]/);
+        if (matchNascita) {
+            d.nascita = pulisciDato(matchNascita[1], 'DATA');
+            d.sesso = matchNascita[0].includes('M') ? 'M' : 'F';
+        }
+    }
+
+    return d;
+}
     function popolaCampi(o) {
         document.getElementById('step-scansione').classList.add('hidden');
         document.getElementById('step-dati').classList.remove('hidden');
