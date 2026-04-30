@@ -2,242 +2,193 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <!-- Questa riga serve per far vedere bene l'app sui telefoni -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestionale Check-in</title>
+    <title>Smart Check-in PRO</title>
     
-    <!-- Libreria per eventuale lettura Barcode (Pronta per il futuro) -->
-    <script src="https://unpkg.com/@zxing/library@latest"></script>
-    <!-- Carichiamo le "menti" dell'app: Tesseract per leggere e SignaturePad per la firma -->
+    <!-- Librerie Core -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
 
     <style>
-        /* CSS per rendere l'app moderna e pulita */
-        body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; }
-        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 500px; margin: auto; }
-        h1 { color: #1a73e8; text-align: center; }
+        :root { --primary: #1a73e8; --success: #28a745; --danger: #dc3545; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8f9fa; margin: 0; padding: 15px; }
+        .card { background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-width: 500px; margin: auto; }
+        h1 { color: var(--primary); text-align: center; font-size: 24px; margin-bottom: 5px; }
+        .subtitle { text-align: center; color: #666; font-size: 14px; margin-bottom: 25px; }
         .hidden { display: none; }
         
-        /* Stili per i pulsanti e gli input */
-        input[type="file"] { margin: 20px 0; width: 100%; }
-        button { background: #1a73e8; color: white; border: none; padding: 12px; border-radius: 8px; width: 100%; font-size: 16px; cursor: pointer; margin-top: 10px; }
-        
-        /* Regole CSS aggiunte per allineare bene i campi di testo sui cellulari */
+        /* Input Design */
+        .upload-zone { border: 2px dashed var(--primary); padding: 30px; border-radius: 15px; text-align: center; background: #f1f6ff; cursor: pointer; transition: 0.3s; }
+        .upload-zone:hover { background: #e8f0fe; }
         .input-group { margin-bottom: 15px; }
-        .input-group label { display: block; margin-bottom: 5px; font-weight: bold; color: #333; font-size: 14px; }
-        .input-group input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+        .input-group label { display: block; margin-bottom: 5px; font-weight: 600; color: #444; font-size: 13px; text-transform: uppercase; }
+        .input-group input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; transition: 0.2s; }
+        .input-group input:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px rgba(26,115,232,0.1); }
         
-        /* Stile area firma */
-        #canvas-firma { border: 2px dashed #ccc; border-radius: 10px; background: #fafafa; width: 100%; height: 200px; margin-top: 10px; }
-        .status { font-style: italic; color: #555; text-align: center; margin-top: 10px; }
+        /* Buttons */
+        button { border: none; padding: 15px; border-radius: 10px; width: 100%; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; margin-top: 10px; }
+        .btn-main { background: var(--primary); color: white; }
+        .btn-main:active { transform: scale(0.98); }
+        
+        #canvas-firma { border: 1px solid #ccc; border-radius: 10px; background: #fff; width: 100%; height: 200px; touch-action: none; }
+        .status { margin-top: 15px; font-size: 14px; color: var(--primary); font-weight: 500; text-align: center; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h1>Smart Check-in</h1>
+    <h1>Smart Check-in PRO</h1>
+    <p class="subtitle">Digitalizzazione documenti per Alloggiati Web</p>
     
-    <!-- SEZIONE 1: SCANSIONE -->
+    <!-- STEP 1: SCANSIONE -->
     <div id="step-scansione">
-        <p>1. Scatta una foto nitida ai codici in basso al documento:</p>
-        <input type="file" id="foto-doc" accept="image/*" capture="camera">
+        <div class="upload-zone" onclick="document.getElementById('foto-doc').click()">
+            <span style="font-size: 40px;">📷</span>
+            <p>Tocca per scansionare il documento<br><small>(Inquadra bene le righe <<<< in basso)</small></p>
+            <input type="file" id="foto-doc" accept="image/*" capture="camera" class="hidden">
+        </div>
         <div id="stato-ocr" class="status"></div>
     </div>
 
-    <!-- SEZIONE 2: DATI ESTRATTI -->
+    <!-- STEP 2: VERIFICA DATI -->
     <div id="step-dati" class="hidden">
-        <h3>Verifica Dati Ospite</h3>
-        
-        <div class="input-group">
-            <label>Cognome</label>
-            <input type="text" id="campo-cognome">
-        </div>
-        <div class="input-group">
-            <label>Nome</label>
-            <input type="text" id="campo-nome">
-        </div>
-        <div class="input-group">
-            <label>Data di Nascita</label>
-            <input type="text" id="campo-nascita">
-        </div>
-        <div class="input-group">
-            <label>Sesso (M/F)</label>
-            <input type="text" id="campo-sesso">
-        </div>
-        <div class="input-group">
-            <label>Cittadinanza (ISO)</label>
-            <input type="text" id="campo-cittadinanza">
-        </div>
-        <div class="input-group">
-            <label>N. Documento</label>
-            <input type="text" id="campo-doc">
-        </div>
-        <div class="input-group">
-            <label>Comune/Stato Residenza</label>
-            <input type="text" id="campo-residenza" placeholder="Inserire manualmente">
-        </div>
-
-        <button onclick="vaiAllaFirma()">Conferma e Firma</button>
+        <div class="input-group"><label>Cognome</label><input type="text" id="campo-cognome"></div>
+        <div class="input-group"><label>Nome</label><input type="text" id="campo-nome"></div>
+        <div class="input-group"><label>Data di Nascita (GG/MM/AAAA)</label><input type="text" id="campo-nascita"></div>
+        <div class="input-group"><label>Sesso</label><input type="text" id="campo-sesso"></div>
+        <div class="input-group"><label>N. Documento</label><input type="text" id="campo-doc"></div>
+        <div class="input-group"><label>Cittadinanza</label><input type="text" id="campo-cittadinanza"></div>
+        <div class="input-group"><label>Comune di Residenza</label><input type="text" id="campo-residenza" placeholder="Inserisci comune"></div>
+        <button class="btn-main" onclick="vaiAllaFirma()">CONFERMA DATI</button>
     </div>
 
-    <!-- SEZIONE 3: PRIVACY E FIRMA -->
+    <!-- STEP 3: FIRMA -->
     <div id="step-firma" class="hidden">
-        <h3>Informativa Privacy</h3>
-        <div id="informativa-legale" style="font-size: 11px; color: #444; border: 1px solid #ccc; border-radius: 6px; padding: 10px; margin-top: 15px; background: #f9f9f9;">
-            <p>Il sottoscritto autorizza il trattamento dei dati personali ai sensi del Reg. UE 2016/679 esclusivamente per le finalità di pubblica sicurezza (Questura) e rendicontazione imposta di soggiorno.</p>
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="checkbox" id="check-privacy" style="width: 20px; height: 20px;"> 
-                <b>Accetto i termini e le condizioni</b>
-            </label>
-        </div>
-        
-        <p style="font-size: 12px; color: #666; margin-top: 15px;">Firma dell'ospite nello spazio sottostante:</p>
+        <h3>Firma per Privacy</h3>
         <canvas id="canvas-firma"></canvas>
-        
-        <!-- Ho aggiunto un display flex per mettere i bottoni finali vicini -->
-        <div style="display: flex; gap: 10px; margin-top: 20px;">
-            <button onclick="pulisciFirma()" style="background:#dc3545; width: 40%;">Cancella</button>
-            <button onclick="salvaTutto()" style="background:#28a745; width: 60%;">Finalizza Check-in</button>
+        <div style="display: flex; gap: 10px; margin-top: 15px;">
+            <button onclick="signaturePad.clear()" style="background:#eee; color:#333; width:35%">PULISCI</button>
+            <button class="btn-main" onclick="salvaTutto()" style="background:var(--success); width:65%">COMPLETA</button>
         </div>
     </div>
 </div>
 
 <script>
-    // Recuperiamo gli elementi dall'interfaccia HTML
     const inputFoto = document.getElementById('foto-doc');
     const statoOcr = document.getElementById('stato-ocr');
     const canvasFirma = document.getElementById('canvas-firma');
     const signaturePad = new SignaturePad(canvasFirma);
 
-    // Questa funzione scatta quando l'utente seleziona o scatta una foto
     inputFoto.onchange = async function() {
         const file = inputFoto.files[0];
         if (!file) return;
 
-        statoOcr.innerText = "⚙️ Preparazione immagine (Ottimizzazione MRZ)...";
+        statoOcr.innerText = "⚡ Ottimizzazione immagine...";
 
         const img = new Image();
         img.onload = async function() {
             const canvasElab = document.createElement('canvas');
             const ctx = canvasElab.getContext('2d');
 
-            // 1. Ingrandiamo l'immagine per non perdere definizione sui caratteri piccoli (<<<<)
-            const width = 1600; 
+            // 1. SUPER-RISOLUZIONE: Aumentiamo la scala per rendere i caratteri nitidi
+            const width = 2000; 
             const scale = width / img.width;
             canvasElab.width = width;
             canvasElab.height = img.height * scale;
 
-            // 2. FILTRO CONTRASTO: Trasformiamo la foto per far risaltare solo il nero su bianco
-            ctx.filter = 'grayscale(1) contrast(3) brightness(0.9)';
+            // 2. FILTRO "SCANNER PROFESSIONALE": Grayscale + Alto Contrasto
+            ctx.filter = 'grayscale(1) contrast(3) brightness(0.8)';
             ctx.drawImage(img, 0, 0, canvasElab.width, canvasElab.height);
 
             try {
-                statoOcr.innerText = "🔍 Lettura dei codici di sicurezza in corso...";
+                statoOcr.innerText = "🔍 Analisi biometrica (MRZ)...";
                 
-                // 3. Chiediamo a Tesseract di leggere l'immagine pulita
                 const risultato = await Tesseract.recognize(canvasElab, 'ita', {
-                    logger: m => { if(m.status === 'recognizing text') statoOcr.innerText = `Analisi: ${Math.round(m.progress * 100)}%`; }
+                    logger: m => { if(m.status === 'recognizing text') statoOcr.innerText = `Lettura: ${Math.round(m.progress * 100)}%`; }
                 });
 
-                const testoGrezzo = risultato.data.text;
-                console.log("Testo visto dal computer:\n", testoGrezzo); 
-
-                // 4. ESTRAZIONE MIRATA
-                const ospite = estraiDatiMRZ(testoGrezzo);
+                // 3. PULIZIA TESTO: Rimuoviamo caratteri sporchi che l'OCR potrebbe inserire
+                const testoPulito = risultato.data.text.toUpperCase();
+                const ospite = parserMRZ(testoPulito);
                 
-                // 5. Nascondiamo la fotocamera e mostriamo i campi
-                document.getElementById('step-scansione').classList.add('hidden');
-                document.getElementById('step-dati').classList.remove('hidden');
+                popolaCampi(ospite);
 
-                // 6. Riempiamo i box
-                document.getElementById('campo-cognome').value = ospite.cognome;
-                document.getElementById('campo-nome').value = ospite.nome;
-                document.getElementById('campo-nascita').value = ospite.nascita;
-                document.getElementById('campo-sesso').value = ospite.sesso;
-                document.getElementById('campo-cittadinanza').value = ospite.cittadinanza;
-                document.getElementById('campo-doc').value = ospite.numDoc;
-                document.getElementById('campo-residenza').value = "";
-
-                statoOcr.innerText = "";
             } catch (err) {
                 console.error(err);
-                statoOcr.innerText = "❌ Errore durante la scansione. Riprova.";
+                statoOcr.innerText = "❌ Errore. Usa una luce migliore.";
             }
         };
         img.src = URL.createObjectURL(file);
     };
 
-    // --- LA NUOVA MENTE DELL'APP: IL PARSER MRZ ---
-    function estraiDatiMRZ(testoGrezzo) {
-        const righe = testoGrezzo.toUpperCase().split('\n')
-                      .map(r => r.replace(/\s/g, '')) 
-                      .filter(r => r.includes('<<') || r.length >= 25);
-
+    function parserMRZ(testo) {
+        // Dividiamo in righe e cerchiamo quelle con almeno 2 simboli <<
+        const righe = testo.split('\n').map(r => r.replace(/\s/g, '')).filter(r => r.includes('<<'));
+        
         let d = { cognome: "", nome: "", nascita: "", sesso: "", cittadinanza: "ITA", numDoc: "" };
 
-        let rigaIdentita = righe.find(r => /^[PCIA<]/.test(r)); 
-        let rigaDati = righe.find(r => /\d{6}[MF<]\d/.test(r)); 
+        // Trova la riga che contiene dati numerici (Data di nascita e sesso)
+        let rigaDati = righe.find(r => /\d{6}[MF]/.test(r));
+        // Trova la riga che contiene i nomi
+        let rigaNomi = righe.find(r => r.startsWith('I') || r.startsWith('C') || r.startsWith('P') || r.startsWith('A'));
 
-        if (rigaIdentita) {
-            let parteNomi = rigaIdentita.substring(5); 
-            let blocchi = parteNomi.split('<<'); 
-            d.cognome = blocchi[0] ? blocchi[0].replace(/</g, ' ').trim() : "";
-            d.nome = blocchi[1] ? blocchi[1].replace(/</g, ' ').trim() : "";
-            d.numDoc = rigaIdentita.substring(0, 9).replace(/</g, '');
+        if (rigaNomi) {
+            // Pulizia Numero Documento (Primi 9 caratteri della riga identità)
+            d.numDoc = rigaNomi.substring(2, 11).replace(/</g, '').replace(/O/g, '0');
+            
+            // Estrazione Nomi e Cognomi (Cerchiamo il separatore <<)
+            let sezioneNomi = rigaNomi.substring(5); 
+            if (sezioneNomi.includes('<<')) {
+                let parti = sezioneNomi.split('<<');
+                d.cognome = parti[0].replace(/</g, ' ').trim();
+                d.nome = parti[1] ? parti[1].replace(/</g, ' ').trim() : "";
+            }
         }
 
         if (rigaDati) {
-            let matchNascita = rigaDati.match(/\d{6}/); 
-            if (matchNascita) {
-                let nascitaGrezza = matchNascita[0];
-                let aa = nascitaGrezza.substring(0, 2);
-                let mm = nascitaGrezza.substring(2, 4);
-                let gg = nascitaGrezza.substring(4, 6);
-                let annoCompleto = (parseInt(aa) > 25 ? "19" : "20") + aa;
-                d.nascita = `${gg}/${mm}/${annoCompleto}`;
+            // DATA DI NASCITA: Formato MRZ è AAMMGG
+            let matchDati = rigaDati.match(/(\d{6})([MF])/);
+            if (matchDati) {
+                let dataGrezza = matchDati[1];
+                let aa = dataGrezza.substring(0, 2);
+                let mm = dataGrezza.substring(2, 4);
+                let gg = dataGrezza.substring(4, 6);
+                
+                // Correzione automatica secolo
+                let anno = (parseInt(aa) > 25) ? "19" + aa : "20" + aa;
+                d.nascita = `${gg}/${mm}/${anno}`;
+                d.sesso = matchDati[2];
             }
-
-            let sessoMatch = rigaDati.match(/[MF]/);
-            d.sesso = sessoMatch ? sessoMatch[0] : "";
         }
-
         return d;
     }
 
-    // --- NAVIGAZIONE E FIRMA ---
+    function popolaCampi(o) {
+        document.getElementById('step-scansione').classList.add('hidden');
+        document.getElementById('step-dati').classList.remove('hidden');
+
+        document.getElementById('campo-cognome').value = o.cognome;
+        document.getElementById('campo-nome').value = o.nome;
+        document.getElementById('campo-nascita').value = o.nascita;
+        document.getElementById('campo-sesso').value = o.sesso;
+        document.getElementById('campo-doc').value = o.numDoc;
+        document.getElementById('campo-cittadinanza').value = o.cittadinanza;
+    }
+
     function vaiAllaFirma() {
         document.getElementById('step-dati').classList.add('hidden');
         document.getElementById('step-firma').classList.remove('hidden');
-        
-        // Risoluzione bug: Diciamo al canvas di prendere la larghezza reale dello schermo
+        // Fix per il ridimensionamento canvas
         setTimeout(() => {
             canvasFirma.width = canvasFirma.offsetWidth;
             canvasFirma.height = 200;
-            signaturePad.clear(); // Pulisce per sicurezza al primo avvio
         }, 100);
     }
 
-    function pulisciFirma() {
-        signaturePad.clear(); // Svuota la lavagnetta
-    }
-
     function salvaTutto() {
-        const privacy = document.getElementById('check-privacy').checked;
-        
-        // Controlli di sicurezza (Validazione form)
-        if (!privacy) {
-            alert("Attenzione: È obbligatorio accettare l'informativa sulla privacy per procedere.");
-            return;
-        }
-        if (signaturePad.isEmpty()) {
-            alert("Attenzione: È richiesta la firma dell'ospite.");
-            return;
-        }
-
-        alert("Perfetto! Check-in completato con successo. I dati sono pronti per essere salvati.");
-        
-        // TODO: Qui aggiungeremo la logica per scaricare il file per la Questura/Pegaso
+        if (signaturePad.isEmpty()) { alert("Firma richiesta!"); return; }
+        alert("Check-in completato per " + document.getElementById('campo-nome').value);
+        // Qui caricheremo i dati nel tuo database futuro
     }
 </script>
 </body>
