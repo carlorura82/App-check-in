@@ -83,170 +83,127 @@
         <button onclick="salvaTutto()" style="background:#28a745; margin-top:20px;">Finalizza Check-in</button>
     </div>
 </div>
-
 <script>
-    // 1. Inizializzazione strumenti
+    // Recuperiamo gli elementi dall'interfaccia HTML
     const inputFoto = document.getElementById('foto-doc');
     const statoOcr = document.getElementById('stato-ocr');
-    const canvas = document.getElementById('canvas-firma');
-    const signaturePad = new SignaturePad(canvas);
+    const canvasFirma = document.getElementById('canvas-firma');
+    const signaturePad = new SignaturePad(canvasFirma);
 
-    // 2. Gestione caricamento foto
+    // Questa funzione scatta quando l'utente seleziona o scatta una foto
     inputFoto.onchange = async function() {
         const file = inputFoto.files[0];
         if (!file) return;
 
-        statoOcr.innerText = "⚙️ Ottimizzazione immagine e scansione...";
+        statoOcr.innerText = "⚙️ Preparazione immagine (Ottimizzazione MRZ)...";
 
         const img = new Image();
         img.onload = async function() {
-            const canvasElaborazione = document.createElement('canvas');
-            const ctx = canvasElaborazione.getContext('2d');
+            const canvasElab = document.createElement('canvas');
+            const ctx = canvasElab.getContext('2d');
 
-            // Ridimensioniamo l'immagine per non sovraccaricare il telefono (max 1200px)
-            const scala = Math.min(1, 1200 / img.width);
-            canvasElaborazione.width = img.width * scala;
-            canvasElaborazione.height = img.height * scala;
+            // 1. Ingrandiamo l'immagine per non perdere definizione sui caratteri piccoli (<<<<)
+            const width = 1600; 
+            const scale = width / img.width;
+            canvasElab.width = width;
+            canvasElab.height = img.height * scale;
 
-            // Filtro bianco e nero per migliorare la lettura dei caratteri
-            ctx.filter = 'contrast(1.5) grayscale(1)';
-            ctx.drawImage(img, 0, 0, canvasElaborazione.width, canvasElaborazione.height);
+            // 2. FILTRO CONTRASTO: Trasformiamo la foto per far risaltare solo il nero su bianco
+            ctx.filter = 'grayscale(1) contrast(3) brightness(0.9)';
+            ctx.drawImage(img, 0, 0, canvasElab.width, canvasElab.height);
 
-           try {
-    const risultato = await Tesseract.recognize(canvasElaborazione, 'ita', {
-        logger: m => {
-            if(m.status === 'recognizing text') {
-                statoOcr.innerText = `Analisi: ${Math.round(m.progress * 100)}%`;
+            try {
+                statoOcr.innerText = "🔍 Lettura dei codici di sicurezza in corso...";
+                
+                // 3. Chiediamo a Tesseract di leggere l'immagine pulita
+                const risultato = await Tesseract.recognize(canvasElab, 'ita', {
+                    logger: m => { if(m.status === 'recognizing text') statoOcr.innerText = `Analisi: ${Math.round(m.progress * 100)}%`; }
+                });
+
+                const testoGrezzo = risultato.data.text;
+                console.log("Testo visto dal computer:", testoGrezzo); // Per debug, utile se vogliamo capire gli errori
+
+                // 4. ESTRAZIONE MIRATA: Passiamo il testo alla nostra nuova funzione MRZ
+                const ospite = estraiDatiMRZ(testoGrezzo);
+                
+                // 5. Nascondiamo la fotocamera e mostriamo i campi da controllare
+                document.getElementById('step-scansione').classList.add('hidden');
+                document.getElementById('step-dati').classList.remove('hidden');
+
+                // 6. Riempiamo i box con i dati (se non li trova, lascia il box vuoto per l'inserimento manuale)
+                document.getElementById('campo-cognome').value = ospite.cognome;
+                document.getElementById('campo-nome').value = ospite.nome;
+                document.getElementById('campo-nascita').value = ospite.nascita;
+                document.getElementById('campo-sesso').value = ospite.sesso;
+                document.getElementById('campo-cittadinanza').value = ospite.cittadinanza;
+                document.getElementById('campo-doc').value = ospite.numDoc;
+                
+                // Il campo residenza lo puliamo sempre, perché useremo il menu a tendina o l'inserimento manuale
+                document.getElementById('campo-residenza').value = "";
+
+                statoOcr.innerText = "";
+            } catch (err) {
+                console.error(err);
+                statoOcr.innerText = "❌ Errore durante la scansione. Riprova avvicinando la fotocamera.";
             }
-        }
-    });
-
-   // ... dentro il try dell'OCR ...
-const ospite = elaboraTestoDocumento(risultato.data.text);
-
-// Mostriamo la sezione dati
-document.getElementById('step-scansione').classList.add('hidden');
-document.getElementById('step-dati').classList.remove('hidden');
-
-// Popoliamo i campi
-document.getElementById('campo-cognome').value = ospite.cognome;
-document.getElementById('campo-nome').value = ospite.nome;
-document.getElementById('campo-nascita').value = ospite.nascita;
-document.getElementById('campo-sesso').value = ospite.sesso;
-document.getElementById('campo-cittadinanza').value = ospite.cittadinanza;
-document.getElementById('campo-doc').value = ospite.numDoc;
-document.getElementById('campo-residenza').value = ospite.comuneRes;
-
-    statoOcr.innerText = "";
-} catch (errore) {
-    console.error(errore);
-    statoOcr.innerText = "❌ Errore durante la lettura.";
-}
         };
         img.src = URL.createObjectURL(file);
     };
 
-    // 3. Logica di estrazione dati (Internazionale + MRZ)
-  function elaboraTestoDocumento(testo) {
-    // Rendiamo tutto maiuscolo e creiamo un array di righe pulite
-    const righe = testo.toUpperCase().split('\n').map(r => r.trim()).filter(r => r.length > 2);
-    const testoUnito = righe.join(" ");
+    // --- LA NUOVA MENTE DELL'APP: IL PARSER MRZ ---
+    function estraiDatiMRZ(testoGrezzo) {
+        // Pulizia: uniamo le righe, togliamo gli spazi bianchi inutili e filtriamo solo le righe che contengono "<<"
+        const righe = testoGrezzo.toUpperCase().split('\n')
+                      .map(r => r.replace(/\s/g, '')) 
+                      .filter(r => r.includes('<<') || r.length >= 25);
 
-    let ospite = {
-        nome: "", cognome: "", nascita: "", sesso: "",
-        cittadinanza: "", numDoc: "", comuneRes: "", cf: ""
-    };
+        let d = { cognome: "", nome: "", nascita: "", sesso: "", cittadinanza: "ITA", numDoc: "" };
 
-    // --- 1. ESTRAZIONE DA CODICE FISCALE (Il metodo più affidabile in Italia) ---
-    const regexCF = /[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]/;
-    const trovatoCF = testoUnito.match(regexCF);
-    if (trovatoCF) {
-        ospite.cf = trovatoCF[0];
-        ospite.nascita = decodificaDataCF(trovatoCF[0]);
-        // Il sesso è nel CF: se il giorno è > 40 è Donna, altrimenti Uomo
-        const giornoCF = parseInt(trovatoCF[0].substring(9, 11));
-        ospite.sesso = giornoCF > 40 ? "F" : "M";
+        // Cerchiamo le due righe chiave della MRZ
+        let rigaIdentita = righe.find(r => /^[PCIA<]/.test(r)); // Riga 1: inizia con P (Passaporto) o C/I/A (Carta Identità)
+        let rigaDati = righe.find(r => /\d{6}[MF<]\d/.test(r)); // Riga 2/3: contiene 6 numeri di nascita seguiti da M o F
+
+        // Estraiamo NOME, COGNOME e NUMERO DOCUMENTO
+        if (rigaIdentita) {
+            let parteNomi = rigaIdentita.substring(5); // Saltiamo i primi 5 caratteri (Tipo doc e Stato)
+            let blocchi = parteNomi.split('<<'); // Dividiamo la riga dove ci sono i simboli <<
+            
+            d.cognome = blocchi[0] ? blocchi[0].replace(/</g, ' ').trim() : "";
+            d.nome = blocchi[1] ? blocchi[1].replace(/</g, ' ').trim() : "";
+            d.numDoc = rigaIdentita.substring(0, 9).replace(/</g, '');
+        }
+
+        // Estraiamo DATA DI NASCITA e SESSO
+        if (rigaDati) {
+            // Cerca 6 numeri consecutivi (es. 821021 per 21/10/1982)
+            let matchNascita = rigaDati.match(/\d{6}/); 
+            if (matchNascita) {
+                let nascitaGrezza = matchNascita[0];
+                let aa = nascitaGrezza.substring(0, 2);
+                let mm = nascitaGrezza.substring(2, 4);
+                let gg = nascitaGrezza.substring(4, 6);
+                
+                // Capiamo se è nato nel 1900 o nel 2000
+                let annoCompleto = (parseInt(aa) > 25 ? "19" : "20") + aa;
+                d.nascita = `${gg}/${mm}/${annoCompleto}`;
+            }
+
+            // Cerca la lettera M o F
+            let sessoMatch = rigaDati.match(/[MF]/);
+            d.sesso = sessoMatch ? sessoMatch[0] : "";
+        }
+
+        return d;
     }
 
-    // --- 2. ESTRAZIONE MRZ (Per Passaporti e CIE internazionali) ---
-    const righeMRZ = righe.filter(r => r.includes("<<"));
-    if (righeMRZ.length >= 2) {
-        // Numero documento in MRZ (solitamente primi 9 caratteri dopo la sigla stato)
-        ospite.numDoc = righeMRZ[0].substring(5, 14).replace(/</g, "");
-        ospite.cittadinanza = righeMRZ[0].substring(2, 5);
-        
-        // Nomi e Cognomi sono nell'ultima riga MRZ
-        const parteNomi = righeMRZ[righeMRZ.length - 1].split("<<");
-        ospite.cognome = parteNomi[0].replace(/^[A-Z0-9<]+<+/, "").replace(/<+/g, " ").trim();
-        ospite.nome = parteNomi[1] ? parteNomi[1].replace(/<+/g, " ").trim() : "";
-    }
-
-    // --- 3. RICERCA PAROLE CHIAVE (Per campi mancanti come Residenza o se MRZ fallisce) ---
-    righe.forEach((riga, i) => {
-        // Cerca Residenza
-        if (riga.includes("RESIDENZA") || riga.includes("INDIRIZZO") || riga.includes("ADDRESS")) {
-            ospite.comuneRes = righe[i+1] || "";
-        }
-        // Cerca Documento se non trovato
-        if (!ospite.numDoc && (riga.includes("CARTA") || riga.includes("DOCUMENT"))) {
-            const matchDoc = riga.match(/[A-Z0-9]{8,10}/);
-            if (matchDoc) ospite.numDoc = matchDoc[0];
-        }
-    });
-
-    return ospite;
-}
-
-// Funzione di supporto per la data dal Codice Fiscale
-function decodificaDataCF(cf) {
-    const mesi = {A:'01', B:'02', C:'03', D:'04', E:'05', H:'06', L:'07', M:'08', P:'09', R:'10', S:'11', T:'12'};
-    let anno = cf.substring(6, 8);
-    anno = (parseInt(anno) > 25 ? "19" : "20") + anno; // Gestione secolo
-    const mese = mesi[cf.charAt(8)];
-    let gg = parseInt(cf.substring(9, 11));
-    if (gg > 40) gg -= 40;
-    return `${gg.toString().padStart(2, '0')}/${mese}/${anno}`;
-}
-// Funzione per estrarre la data dal Codice Fiscale
-function decodificaDataCF(cf) {
-    const mesi = {A:'01', B:'02', C:'03', D:'04', E:'05', H:'06', L:'07', M:'08', P:'09', R:'10', S:'11', T:'12'};
-    let anno = cf.substring(6, 8);
-    anno = (parseInt(anno) > 25 ? "19" : "20") + anno;
-    const mese = mesi[cf.charAt(8)];
-    let gg = parseInt(cf.substring(9, 11));
-    if (gg > 40) gg -= 40; // Se donna, il giorno è aumentato di 40
-    return `${gg}/${mese}/${anno}`;
-}
-
-    // 4. Funzioni di navigazione e firma
+    // Passaggio finale alla firma
     function vaiAllaFirma() {
         document.getElementById('step-dati').classList.add('hidden');
         document.getElementById('step-firma').classList.remove('hidden');
-        canvas.width = canvas.offsetWidth;
-        canvas.height = 200;
-    }
-
-    function pulisciFirma() { signaturePad.clear(); }
-
-function generaFilePegaso(ospite) {
-    // Formato standard: Cognome;Nome;DataNascita;Cittadinanza;NumDoc;Residenza
-    const riga = `${ospite.cognome};${ospite.nome};${ospite.nascita};${ospite.cittadinanza};${ospite.numDoc};${ospite.comuneRes}`;
-    
-    const blob = new Blob([riga], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `checkin_${ospite.cognome}.csv`;
-    a.click();
-}
-
-    function salvaTutto() {
-        if (signaturePad.isEmpty()) {
-            alert("Per favore, fai firmare il cliente!");
-        } else {
-            alert("Check-in completato!");
-            // Qui aggiungeremo il tasto per esportare in Pegaso
-        }
+        
+        // Ridimensioniamo la lavagnetta della firma per farla funzionare bene sui cellulari
+        canvasFirma.width = canvasFirma.offsetWidth;
+        canvasFirma.height = 200;
     }
 </script>
 </body>
