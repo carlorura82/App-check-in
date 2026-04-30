@@ -63,21 +63,36 @@
 
     // Funzione che scatta quando selezioni la foto
     inputFoto.onchange = async function() {
-        const file = inputFoto.files[0];
-        statoOcr.innerText = "Analisi documento in corso...";
+    const file = inputFoto.files[0];
+    if (!file) return;
 
-        // Avviamo Tesseract per leggere il testo
-        const risultato = await Tesseract.recognize(file, 'ita');
-        const testo = risultato.data.text;
+    statoOcr.innerText = "⚙️ Ottimizzazione immagine e scansione MRZ...";
 
-        // Mostriamo la sezione dati e nascondiamo la scansione
-        document.getElementById('step-scansione').classList.add('hidden');
-        document.getElementById('step-dati').classList.remove('hidden');
-        
-        // Inseriamo tutto il testo letto nel campo nome per ora (poi lo puliremo)
-        document.getElementById('campo-nome').value = testo.substring(0, 50); 
-        statoOcr.innerText = "";
+    // Creiamo un'area di disegno (Canvas) nascosta per elaborare l'immagine
+    const canvasElaborazione = document.createElement('canvas');
+    const ctx = canvasElaborazione.getContext('2d');
+    const img = new Image();
+
+    img.onload = async function() {
+        // Impostiamo le dimensioni del canvas come l'immagine originale
+        canvasElaborazione.width = img.width;
+        canvasElaborazione.height = img.height;
+
+        // Applichiamo un filtro per aumentare contrasto e nitidezza
+        ctx.filter = 'contrast(1.4) brightness(0.9) grayscale(1)';
+        ctx.drawImage(img, 0, 0);
+
+        // Avviamo Tesseract con una "Whitelist" specifica per MRZ
+        const risultato = await Tesseract.recognize(canvasElaborazione, 'ita', {
+            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<', // Forza a leggere solo questi
+            logger: m => console.log(m.status + ": " + m.progress)
+        });
+
+        const testoGrezzo = risultato.data.text;
+        analizzaTestoAvanzato(testoGrezzo);
     };
+    img.src = URL.createObjectURL(file);
+};
 function elaboraTestoDocumento(testo) {
     // Pulizia iniziale: rimuoviamo spazi extra e rendiamo tutto maiuscolo
     const righe = testo.toUpperCase().split('\n').map(r => r.trim());
