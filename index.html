@@ -55,14 +55,17 @@
 <div class="container">
     <h2>Check-in Rapido</h2>
     
-    <div class="scanner-area">
-        <label for="ocr-upload" style="cursor: pointer; display: block;">
-            <span style="font-size: 40px;">📷</span><br>
-            <strong>Tocca qui per fotografare il RETRO del documento</strong>
-        </label>
-        <input type="file" id="ocr-upload" accept="image/*" onchange="processOCR(this)" style="display: none;">
-        <div id="ocr-status" class="status-msg">Pronto per la scansione</div>
-    </div>
+   <!-- Area scanner Ottimizzata per Smartphone -->
+<div class="scanner-area">
+    <label for="ocr-upload" style="cursor: pointer; display: block;">
+        <span style="font-size: 50px;">📸</span><br>
+        <strong>Tocca qui per SCATTARE UNA FOTO</strong><br>
+        <small>(Retro o Frontale del documento)</small>
+    </label>
+    <!-- L'attributo capture="camera" suggerisce allo smartphone di aprire la fotocamera -->
+    <input type="file" id="ocr-upload" accept="image/*" capture="camera" onchange="processOCR(this)" style="display: none;">
+    <div id="ocr-status" class="status-msg">Pronto per la scansione</div>
+</div>
 
     <!-- Campi Modulo -->
     <div class="form-group">
