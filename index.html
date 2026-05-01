@@ -245,38 +245,47 @@ function pulisciFirma() {
 async function processOCR(input) {
     const status = document.getElementById('ocr-status');
     const debug = document.getElementById('debug-text');
+    let destinazioneScansione = 0;
+    
     if (!input.files || !input.files[0]) return;
 
-    status.innerText = "⏳ Analisi documento...";
-    
+    status.innerText = "⏳ Caricamento motore di analisi...";
+    debug.innerText = "Analisi avviata...";
+
     try {
-        const worker = await Tesseract.createWorker();
+        const worker = await Tesseract.createWorker({
+            logger: m => {
+                if(m.status === 'recognizing text') {
+                    status.innerText = `⏳ Analisi: ${Math.round(m.progress * 100)}%`;
+                }
+            }
+        });
+
         await worker.loadLanguage('ita');
         await worker.initialize('ita');
+        
         const { data: { text } } = await worker.recognize(input.files[0]);
         
+        // Visualizziamo il testo grezzo per debug
         debug.innerText = text;
 
-        // Se destinazioneScansione è 0, riempiamo i campi principali
-        // Se è > 1, dobbiamo riempire i campi guest_N_lastname, ecc.
-        if (destinazioneScansione === 0) {
-            if (text.includes("<<")) parseMRZData(text); 
-            else parseFreeTextData(text);
+        // --- LOGICA DI SMISTAMENTO ---
+        // Se il testo contiene "<<", usiamo la funzione MRZ (Retro/Passaporto)
+        // Altrimenti usiamo la funzione Testo Libero (Frontale)
+        if (text.includes("<<")) {
+            console.log("Rilevato formato MRZ");
+            parseMRZData(text); 
         } else {
-            // Logica semplificata per ospiti extra (puoi affinarla)
-            const dati = text.includes("<<") ? extractBasicMRZ(text) : extractBasicFree(text);
-            document.getElementById(`guest_${destinazioneScansione}_lastname`).value = dati.cognome;
-            document.getElementById(`guest_${destinazioneScansione}_firstname`).value = dati.nome;
-            document.getElementById(`guest_${destinazioneScansione}_birthdate`).value = dati.nascita;
+            console.log("Rilevato formato Testo Libero");
+            parseFreeTextData(text);
         }
 
         await worker.terminate();
-        status.innerText = "✅ Dati inseriti!";
-        validaRequisitiFirma(); // Controllo automatico dopo la scansione
+        status.innerText = "✅ Elaborazione completata";
 
     } catch (error) {
-        console.error("Errore:", error);
-        status.innerText = "❌ Errore OCR";
+        console.error("Errore OCR:", error);
+        status.innerText = "❌ Errore durante l'analisi del documento";
     }
 }
 
