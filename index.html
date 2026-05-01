@@ -1,1 +1,295 @@
-gestionale_affitto
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner Documenti - Gestione Affittacamere</title>
+    
+    <!-- Libreria Tesseract.js per l'OCR -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; line-height: 1.6; background-color: #f0f2f5; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h2 { color: #1a73e8; text-align: center; }
+        
+        /* Area scanner */
+        .scanner-area { 
+            background: #e8f0fe; 
+            padding: 20px; 
+            border-radius: 10px; 
+            margin-bottom: 25px; 
+            border: 2px dashed #1a73e8; 
+            text-align: center;
+        }
+        
+        .status-msg { font-weight: bold; margin-top: 10px; color: #1a73e8; min-height: 24px; }
+        
+        /* Modulo */
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 8px; color: #444; }
+        input { 
+            width: 100%; 
+            padding: 12px; 
+            border: 1px solid #bdc1c6; 
+            border-radius: 8px; 
+            box-sizing: border-box; 
+            font-size: 16px; 
+        }
+
+        #debug-text { 
+            background: #202124; 
+            color: #34a853; 
+            padding: 15px; 
+            border-radius: 8px; 
+            font-family: monospace; 
+            font-size: 12px; 
+            overflow-x: auto;
+            margin-top: 20px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Check-in Rapido</h2>
+    
+   <!-- Area scanner Ottimizzata per Smartphone -->
+<div class="scanner-area">
+    <label for="ocr-upload" style="cursor: pointer; display: block;">
+        <span style="font-size: 50px;">📸</span><br>
+        <strong>Tocca qui per SCATTARE UNA FOTO</strong><br>
+        <small>(Retro o Frontale del documento)</small>
+    </label>
+    <!-- L'attributo capture="camera" suggerisce allo smartphone di aprire la fotocamera -->
+    <input type="file" id="ocr-upload" accept="image/*" capture="camera" onchange="processOCR(this)" style="display: none;">
+    <div id="ocr-status" class="status-msg">Pronto per la scansione</div>
+</div>
+
+    <!-- Campi Modulo -->
+    <div class="form-group">
+        <label>Cognome</label>
+        <input type="text" id="lastname">
+    </div>
+    <div class="form-group">
+        <label>Nome</label>
+        <input type="text" id="firstname">
+    </div>
+    <div class="form-group">
+        <label>Data di Nascita</label>
+        <input type="date" id="birthdate">
+    </div>
+    <div class="form-group">
+        <label>Sesso</label>
+        <input type="text" id="gender">
+    </div>
+    <div class="form-group">
+        <label>Cittadinanza</label>
+        <input type="text" id="country">
+    </div>
+    <div class="form-group">
+        <label>Comune di Residenza</label>
+        <input type="text" id="residence_city">
+    </div>
+    <div class="form-group">
+        <label>Numero Documento</label>
+        <input type="text" id="doc_number">
+    </div>
+    <div class="form-group">
+        <label>Tipo Documento</label>
+        <input type="text" id="doc_type">
+    </div>
+
+    <h4 style="margin-top:30px;">Dati Grezzi Letti:</h4>
+    <div id="debug-text">Nessun dato analizzato.</div>
+</div>
+
+<script>
+   /**
+ * FUNZIONE 1: Gestisce il caricamento dell'immagine e avvia l'OCR
+ */
+async function processOCR(input) {
+    const status = document.getElementById('ocr-status');
+    const debug = document.getElementById('debug-text');
+    
+    if (!input.files || !input.files[0]) return;
+
+    status.innerText = "⏳ Caricamento motore di analisi...";
+    debug.innerText = "Analisi avviata...";
+
+    try {
+        const worker = await Tesseract.createWorker({
+            logger: m => {
+                if(m.status === 'recognizing text') {
+                    status.innerText = `⏳ Analisi: ${Math.round(m.progress * 100)}%`;
+                }
+            }
+        });
+
+        await worker.loadLanguage('ita');
+        await worker.initialize('ita');
+        
+        const { data: { text } } = await worker.recognize(input.files[0]);
+        
+        // Visualizziamo il testo grezzo per debug
+        debug.innerText = text;
+
+        // --- LOGICA DI SMISTAMENTO ---
+        // Se il testo contiene "<<", usiamo la funzione MRZ (Retro/Passaporto)
+        // Altrimenti usiamo la funzione Testo Libero (Frontale)
+        if (text.includes("<<")) {
+            console.log("Rilevato formato MRZ");
+            parseMRZData(text); 
+        } else {
+            console.log("Rilevato formato Testo Libero");
+            parseFreeTextData(text);
+        }
+
+        await worker.terminate();
+        status.innerText = "✅ Elaborazione completata";
+
+    } catch (error) {
+        console.error("Errore OCR:", error);
+        status.innerText = "❌ Errore durante l'analisi del documento";
+    }
+}
+
+/**
+ * FUNZIONE 2: Estrazione da zona MRZ (Standard internazionale)
+ */
+function parseMRZData(rawText) {
+    const fullText = rawText.toUpperCase();
+    const lines = fullText.split('\n').map(l => l.trim().replace(/\s/g, ''));
+    const mrzLines = lines.filter(l => l.includes('<<'));
+
+    if (mrzLines.length >= 2) {
+        const rigaDoc = mrzLines.find(l => l.startsWith('C<') || l.startsWith('CA') || l.startsWith('P<'));
+        const rigaDati = mrzLines.find(l => l.match(/^\d{6}/));
+        const rigaNomi = mrzLines.find(l => l.includes('<<') && !l.match(/\d{5,}/));
+
+        if (rigaNomi) {
+            const parts = rigaNomi.split('<<');
+            document.getElementById('lastname').value = parts[0].replace(/[^A-Z]/g, '');
+            document.getElementById('firstname').value = parts[1] ? parts[1].replace(/[^A-Z]/g, '') : '';
+        }
+
+        if (rigaDati) {
+            const yy = rigaDati.substring(0, 2);
+            const mm = rigaDati.substring(2, 4);
+            const dd = rigaDati.substring(4, 6);
+            const annoPrefisso = (parseInt(yy) > 25 ? "19" : "20");
+            document.getElementById('birthdate').value = `${annoPrefisso}${yy}-${mm}-${dd}`;
+            document.getElementById('gender').value = rigaDati.substring(7, 8);
+            
+            let nazione = rigaDati.substring(15, 18);
+            if (nazione === "1TA" || nazione === "IT4" || nazione === "ITA") {
+                document.getElementById('country').value = "ITALIA";
+            } else {
+                document.getElementById('country').value = nazione; 
+            }
+        }
+
+        if (rigaDoc) {
+            document.getElementById('doc_number').value = rigaDoc.substring(5, 14).replace(/</g, '');
+            const primoCarattere = rigaDoc.substring(0, 1);
+            document.getElementById('doc_type').value = (primoCarattere === 'P') ? "PASSAPORTO" : "CARTA IDENTITA'";
+        }
+    }
+}
+
+/**
+ * FUNZIONE 3: Estrazione da Testo Libero (Frontale documento)
+ */
+function parseFreeTextData(rawText) {
+    // 1. Pulizia preliminare: togliamo caratteri strani ma teniamo punteggiatura utile
+    const cleanText = rawText.replace(/[|\\/_]/g, ' '); 
+    const lines = cleanText.split('\n').map(l => l.trim()).filter(l => l.length > 1);
+
+    lines.forEach((line, index) => {
+        const uLine = line.toUpperCase();
+
+        // --- ESTRAZIONE COGNOME ---
+        if (uLine.includes("COGNOME") || uLine.includes("SURNAME")) {
+            // Se la parola chiave è in questa riga, il valore è probabilmente la riga SUCCESSIVA
+            if (lines[index + 1]) {
+                document.getElementById('lastname').value = lines[index + 1].replace(/[^A-Z]/g, '').trim();
+            }
+        }
+
+        // --- ESTRAZIONE NOME ---
+        if (uLine.includes("NOME") || uLine.includes("NAME")) {
+            // Spesso legge "NOME / NAME" e sotto "CARLO"
+            if (lines[index + 1]) {
+                document.getElementById('firstname').value = lines[index + 1].replace(/[^A-Z]/g, '').trim();
+            }
+        }
+
+        // --- ESTRAZIONE NUMERO DOCUMENTO ---
+        // Cerca il pattern classico CIE: 2 lettere, 5 numeri, 2 lettere (es: CA13623QN)
+        const docMatch = uLine.match(/[A-Z]{2}\d{5}[A-Z]{2}/);
+        if (docMatch) {
+            document.getElementById('doc_number').value = docMatch[0];
+        }
+
+        // --- ESTRAZIONE DATA DI NASCITA ---
+        // Cerca il pattern DD.MM.YYYY o DD/MM/YYYY
+        const dateMatch = uLine.match(/(\d{2})[\.\/](\d{2})[\.\/](\d{4})/);
+        if (dateMatch) {
+            // Converte da 07.11.1982 a 1982-11-07 per il campo <input type="date">
+            const formattedDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
+            document.getElementById('birthdate').value = formattedDate;
+        }
+
+        // --- ESTRAZIONE SESSO E CITTADINANZA ---
+        // Cerchiamo una riga che contenga " M " o " F " isolati
+        if (uLine.match(/\bM\b/) || uLine.match(/\bF\b/)) {
+            const sex = uLine.includes(" F ") || uLine.startsWith("F ") ? "F" : "M";
+            document.getElementById('gender').value = sex;
+            
+            if (uLine.includes("ITA")) {
+                document.getElementById('country').value = "ITALIA";
+            }
+        }
+    });
+
+    // --- ESTRAZIONE COMUNE (Logica specifica per il tuo caso) ---
+    if (cleanText.toUpperCase().includes("TIGNALE")) {
+        document.getElementById('residence_city').value = "TIGNALE";
+    }
+function preparaInvioDati() {
+    // 1. Raccogliamo i dati del Capogruppo
+    const datiCheckin = {
+        soggiorno: {
+            arrivo: document.getElementById('checkin_date').value,
+            partenza: document.getElementById('checkout_date').value,
+            totale_ospiti: document.getElementById('num_guests').value
+        },
+        capogruppo: {
+            cognome: document.getElementById('lastname').value,
+            nome: document.getElementById('firstname').value,
+            nascita: document.getElementById('birthdate').value,
+            doc_n: document.getElementById('doc_number').value,
+            comune: document.getElementById('residence_city').value
+        },
+        ospiti_extra: [],
+        // Convertiamo la firma in un'immagine (stringa di testo base64)
+        firma: canvas.toDataURL("image/png")
+    };
+
+    // 2. Ciclo per raccogliere gli ospiti extra (se presenti)
+    const num = document.getElementById('num_guests').value;
+    for (let i = 2; i <= num; i++) {
+        datiCheckin.ospiti_extra.push({
+            cognome: document.getElementById(`guest_${i}_lastname`).value,
+            nome: document.getElementById(`guest_${i}_firstname`).value,
+            nascita: document.getElementById(`guest_${i}_birthdate`).value
+        });
+    }
+
+    return datiCheckin;
+}
+}</script>
+
+</body>
+</html>
