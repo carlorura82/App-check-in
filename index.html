@@ -185,6 +185,51 @@ canvas.addEventListener('mousemove', (e) => {
     ctx.stroke();
     });
 
+    function getCoords(e) {
+    if (e.touches && e.touches[0]) {
+        // Se è un tocco, calcoliamo la posizione relativa al canvas
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: e.touches[0].clientX - rect.left,
+            y: e.touches[0].clientY - rect.top
+        };
+    }
+    // Se è un mouse, usiamo le coordinate standard
+    return { x: e.offsetX, y: e.offsetY };
+}
+
+// --- EVENTI MOUSE (Per PC) ---
+canvas.addEventListener('mousedown', (e) => { drawing = true; const c = getCoords(e); ctx.moveTo(c.x, c.y); });
+canvas.addEventListener('mousemove', (e) => {
+    if (!drawing) return;
+    const c = getCoords(e);
+    ctx.lineTo(c.x, c.y);
+    ctx.stroke();
+});
+canvas.addEventListener('mouseup', () => { drawing = false; ctx.beginPath(); });
+
+// --- EVENTI TOUCH (Per Smartphone) ---
+canvas.addEventListener('touchstart', (e) => {
+    drawing = true;
+    const c = getCoords(e);
+    ctx.moveTo(c.x, c.y);
+    e.preventDefault(); // Impedisce lo scorrimento della pagina mentre firmi
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+    if (!drawing) return;
+    const c = getCoords(e);
+    ctx.lineTo(c.x, c.y);
+    ctx.stroke();
+    e.preventDefault(); // Evita che la pagina si muova seguendo il dito
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { 
+    drawing = false; 
+    ctx.beginPath(); 
+    validaRequisitiFirma(); // Ricontrolla se può salvare
+});
+
 function disegna(e) {
     if (!drawing) return;
     ctx.lineWidth = 2;
