@@ -12,42 +12,14 @@
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; line-height: 1.6; background-color: #f0f2f5; }
         .container { max-width: 600px; margin: auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
         h2 { color: #1a73e8; text-align: center; }
-        
-        /* Area scanner */
-        .scanner-area { 
-            background: #e8f0fe; 
-            padding: 20px; 
-            border-radius: 10px; 
-            margin-bottom: 25px; 
-            border: 2px dashed #1a73e8; 
-            text-align: center;
-        }
-        
+        .scanner-area { background: #e8f0fe; padding: 20px; border-radius: 10px; margin-bottom: 25px; border: 2px dashed #1a73e8; text-align: center; }
         .status-msg { font-weight: bold; margin-top: 10px; color: #1a73e8; min-height: 24px; }
-        
-        /* Modulo */
         .form-group { margin-bottom: 15px; }
         label { display: block; font-weight: bold; margin-bottom: 8px; color: #444; }
-        input { 
-            width: 100%; 
-            padding: 12px; 
-            border: 1px solid #bdc1c6; 
-            border-radius: 8px; 
-            box-sizing: border-box; 
-            font-size: 16px; 
-        }
-
-        #debug-text { 
-            background: #202124; 
-            color: #34a853; 
-            padding: 15px; 
-            border-radius: 8px; 
-            font-family: monospace; 
-            font-size: 12px; 
-            overflow-x: auto;
-            margin-top: 20px;
-            white-space: pre-wrap;
-        }
+        input { width: 100%; padding: 12px; border: 1px solid #bdc1c6; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        #debug-text { background: #202124; color: #34a853; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 12px; overflow-x: auto; margin-top: 20px; white-space: pre-wrap; }
+        .btn-save { background-color: #1a73e8; color: white; padding: 15px; border: none; border-radius: 8px; width: 100%; font-size: 18px; margin-top: 20px; cursor: pointer; }
+        .btn-save:hover { background-color: #1557b0; }
     </style>
 </head>
 <body>
@@ -55,17 +27,16 @@
 <div class="container">
     <h2>Check-in Rapido</h2>
     
-   <!-- Area scanner Ottimizzata per Smartphone -->
-<div class="scanner-area">
-    <label for="ocr-upload" style="cursor: pointer; display: block;">
-        <span style="font-size: 50px;">📸</span><br>
-        <strong>Tocca qui per SCATTARE UNA FOTO</strong><br>
-        <small>(Retro o Frontale del documento)</small>
-    </label>
-    <!-- L'attributo capture="camera" suggerisce allo smartphone di aprire la fotocamera -->
-    <input type="file" id="ocr-upload" accept="image/*" capture="camera" onchange="processOCR(this)" style="display: none;">
-    <div id="ocr-status" class="status-msg">Pronto per la scansione</div>
-</div>
+    <!-- Area scanner Ottimizzata per Smartphone -->
+    <div class="scanner-area">
+        <label for="ocr-upload" style="cursor: pointer; display: block;">
+            <span style="font-size: 50px;">📸</span><br>
+            <strong>Tocca qui per SCATTARE UNA FOTO</strong><br>
+            <small>(Retro o Frontale del documento)</small>
+        </label>
+        <input type="file" id="ocr-upload" accept="image/*" capture="camera" onchange="processOCR(this)" style="display: none;">
+        <div id="ocr-status" class="status-msg">Pronto per la scansione</div>
+    </div>
 
     <!-- Campi Modulo -->
     <div class="form-group">
@@ -100,19 +71,133 @@
         <label>Tipo Documento</label>
         <input type="text" id="doc_type">
     </div>
+    <!-- Dati del Soggiorno -->
+<!-- DATI DEL SOGGIORNO -->
+<div class="form-group" style="background: #e3f2fd; padding: 15px; border-radius: 10px; margin-top: 20px;">
+    <h3>Dati Soggiorno</h3>
+    <label>Data Arrivo</label>
+    <input type="date" id="checkin_date" required oninput="validaRequisitiFirma()">
+    <label>Data Partenza</label>
+    <input type="date" id="checkout_date" required oninput="validaRequisitiFirma()">
+    
+    <label>Numero Totale Persone</label>
+    <input type="number" id="num_guests" value="1" min="1" max="10" onchange="gestisciOspitiExtra(); validaRequisitiFirma()">
+</div>
+
+<!-- CONTENITORE OSPITI EXTRA -->
+<div id="extra-guests-container"></div>
+
+<!-- AREA PRIVACY E FIRMA -->
+<div class="form-group" style="margin-top: 30px; padding: 15px; border: 2px solid #bdc1c6; border-radius: 10px;">
+    <h3>Consenso e Firma</h3>
+    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+        <input type="checkbox" id="privacy_check" onchange="validaRequisitiFirma()"> 
+        Accetto il trattamento dei dati personali (GDPR)
+    </label>
+
+    <div id="signature-wrapper" style="margin-top: 15px; opacity: 0.3; pointer-events: none;">
+        <label>Firma del Capogruppo</label>
+        <canvas id="signature-pad" width="400" height="150" style="border: 1px dashed #000; background: #fff; width: 100%; touch-action: none;"></canvas>
+        <button type="button" onclick="pulisciFirma()" style="width: auto; background: #95a5a6; padding: 5px 10px; font-size: 12px;">Cancella Firma</button>
+    </div>
+    <p id="firma-warning" style="color: #e74c3c; font-size: 13px;">Compila tutti i campi e accetta la privacy per poter firmare.</p>
+</div>
+
+    <button type="button" class="btn-save" onclick="inviaDatiAlServer()">
+        💾 Salva nel Gestionale
+    </button>
 
     <h4 style="margin-top:30px;">Dati Grezzi Letti:</h4>
     <div id="debug-text">Nessun dato analizzato.</div>
 </div>
-<!-- Aggiungi questo dopo l'ultimo campo del modulo -->
 
-<button type="button" onclick="inviaDatiAlServer()" style="background-color: #1a73e8; color: white; padding: 15px; border: none; border-radius: 8px; width: 100%; font-size: 18px; margin-top: 20px;">
-    💾 Salva nel Gestionale
-</button>
 <script>
-   /**
- * FUNZIONE 1: Gestisce il caricamento dell'immagine e avvia l'OCR
- */
+    // Gestisce la comparsa di nuovi campi se ci sono più ospiti
+// 1. Gestisce la creazione dinamica dei campi per gli ospiti aggiuntivi
+function gestisciOspitiExtra() {
+    const container = document.getElementById('extra-guests-container');
+    const num = parseInt(document.getElementById('num_guests').value);
+    container.innerHTML = ''; // Pulisce i campi precedenti
+
+    for (let i = 2; i <= num; i++) {
+        container.innerHTML += `
+            <div class="guest-extra" style="border-top: 2px solid #1a73e8; margin-top: 20px; padding-top: 10px;">
+                <h4>Dati Ospite ${i}</h4>
+                <div class="form-group">
+                    <label>Cognome</label>
+                    <input type="text" id="guest_${i}_lastname" class="required-field" oninput="validaRequisitiFirma()">
+                </div>
+                <div class="form-group">
+                    <label>Nome</label>
+                    <input type="text" id="guest_${i}_firstname" class="required-field" oninput="validaRequisitiFirma()">
+                </div>
+                <div class="form-group">
+                    <label>Data di Nascita</label>
+                    <input type="date" id="guest_${i}_birthdate" class="required-field" oninput="validaRequisitiFirma()">
+                </div>
+            </div>
+        `;
+    }
+}
+
+// 2. FUNZIONE CRUCIALE: Controlla campi vuoti e checkbox per abilitare la firma
+function validaRequisitiFirma() {
+    const privacyOk = document.getElementById('privacy_check').checked;
+    const checkin = document.getElementById('checkin_date').value;
+    const checkout = document.getElementById('checkout_date').value;
+    const capogruppoNome = document.getElementById('firstname').value;
+    const capogruppoCognome = document.getElementById('lastname').value;
+
+    // Controlla anche se gli ospiti extra hanno i campi pieni
+    const campiExtra = document.querySelectorAll('.required-field');
+    let extraOk = true;
+    campiExtra.forEach(campo => { if(campo.value.trim() === "") extraOk = false; });
+
+    const wrapper = document.getElementById('signature-wrapper');
+    const warning = document.getElementById('firma-warning');
+
+    if (privacyOk && checkin && checkout && capogruppoNome && capogruppoCognome && extraOk) {
+        wrapper.style.opacity = "1";
+        wrapper.style.pointerEvents = "auto";
+        warning.style.display = "none";
+    } else {
+        wrapper.style.opacity = "0.3";
+        wrapper.style.pointerEvents = "none";
+        warning.style.display = "block";
+    }
+}
+
+
+
+
+
+const canvas = document.getElementById('signature-pad');
+const ctx = canvas.getContext('2d');
+let drawing = false;
+
+canvas.addEventListener('mousedown', () => drawing = true);
+canvas.addEventListener('mouseup', () => { drawing = false; ctx.beginPath(); });
+canvas.addEventListener('mousemove', (e) => {
+    if (!drawing) return;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineTo(e.offsetX, e.offsetY);
+    ctx.stroke();
+    });
+    
+
+function disegna(e) {
+    if (!drawing) return;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineTo(e.offsetX, e.offsetY);
+    ctx.stroke();
+}
+
+function pulisciFirma() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
 async function processOCR(input) {
     const status = document.getElementById('ocr-status');
     const debug = document.getElementById('debug-text');
@@ -159,8 +244,9 @@ async function processOCR(input) {
     }
 }
 
+
 /**
- * FUNZIONE 2: Estrazione da zona MRZ (Standard internazionale)
+ * FUNZIONE 2: Logica MRZ (Retro/Passaporto)
  */
 function parseMRZData(rawText) {
     const fullText = rawText.toUpperCase();
@@ -202,132 +288,43 @@ function parseMRZData(rawText) {
     }
 }
 
+
 /**
- * FUNZIONE 3: Estrazione da Testo Libero (Frontale documento)
+ * FUNZIONE 3: Logica Testo Libero (Frontale)
  */
 function parseFreeTextData(rawText) {
-    // 1. Pulizia preliminare: togliamo caratteri strani ma teniamo punteggiatura utile
-    const cleanText = rawText.replace(/[|\\/_]/g, ' '); 
-    const lines = cleanText.split('\n').map(l => l.trim()).filter(l => l.length > 1);
-
+    const lines = rawText.replace(/[|\\/_]/g, ' ').split('\n').map(l => l.trim());
     lines.forEach((line, index) => {
         const uLine = line.toUpperCase();
-
-        // --- ESTRAZIONE COGNOME ---
-        if (uLine.includes("COGNOME") || uLine.includes("SURNAME")) {
-            // Se la parola chiave è in questa riga, il valore è probabilmente la riga SUCCESSIVA
-            if (lines[index + 1]) {
-                document.getElementById('lastname').value = lines[index + 1].replace(/[^A-Z]/g, '').trim();
-            }
+        if ((uLine.includes("COGNOME") || uLine.includes("SURNAME")) && lines[index + 1]) {
+            document.getElementById('lastname').value = lines[index + 1].replace(/[^A-Z]/g, '').trim();
         }
-
-        // --- ESTRAZIONE NOME ---
-        if (uLine.includes("NOME") || uLine.includes("NAME")) {
-            // Spesso legge "NOME / NAME" e sotto "CARLO"
-            if (lines[index + 1]) {
-                document.getElementById('firstname').value = lines[index + 1].replace(/[^A-Z]/g, '').trim();
-            }
+        if ((uLine.includes("NOME") || uLine.includes("NAME")) && lines[index + 1]) {
+            document.getElementById('firstname').value = lines[index + 1].replace(/[^A-Z]/g, '').trim();
         }
-
-        // --- ESTRAZIONE NUMERO DOCUMENTO ---
-        // Cerca il pattern classico CIE: 2 lettere, 5 numeri, 2 lettere (es: CA13623QN)
         const docMatch = uLine.match(/[A-Z]{2}\d{5}[A-Z]{2}/);
-        if (docMatch) {
-            document.getElementById('doc_number').value = docMatch[0];
-        }
-
-        // --- ESTRAZIONE DATA DI NASCITA ---
-        // Cerca il pattern DD.MM.YYYY o DD/MM/YYYY
-        const dateMatch = uLine.match(/(\d{2})[\.\/](\d{2})[\.\/](\d{4})/);
-        if (dateMatch) {
-            // Converte da 07.11.1982 a 1982-11-07 per il campo <input type="date">
-            const formattedDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
-            document.getElementById('birthdate').value = formattedDate;
-        }
-
-        // --- ESTRAZIONE SESSO E CITTADINANZA ---
-        // Cerchiamo una riga che contenga " M " o " F " isolati
-        if (uLine.match(/\bM\b/) || uLine.match(/\bF\b/)) {
-            const sex = uLine.includes(" F ") || uLine.startsWith("F ") ? "F" : "M";
-            document.getElementById('gender').value = sex;
-            
-            if (uLine.includes("ITA")) {
-                document.getElementById('country').value = "ITALIA";
-            }
-        }
+        if (docMatch) document.getElementById('doc_number').value = docMatch[0];
     });
-
-    // --- ESTRAZIONE COMUNE (Logica specifica per il tuo caso) ---
-    if (cleanText.toUpperCase().includes("TIGNALE")) {
-        document.getElementById('residence_city').value = "TIGNALE";
-    }
-function preparaInvioDati() {
-    // 1. Raccogliamo i dati del Capogruppo
-    const datiCheckin = {
-        soggiorno: {
-            arrivo: document.getElementById('checkin_date').value,
-            partenza: document.getElementById('checkout_date').value,
-            totale_ospiti: document.getElementById('num_guests').value
-        },
-        capogruppo: {
-            cognome: document.getElementById('lastname').value,
-            nome: document.getElementById('firstname').value,
-            nascita: document.getElementById('birthdate').value,
-            doc_n: document.getElementById('doc_number').value,
-            comune: document.getElementById('residence_city').value
-        },
-        ospiti_extra: [],
-        // Convertiamo la firma in un'immagine (stringa di testo base64)
-        firma: canvas.toDataURL("image/png")
-    };
-
-    // 2. Ciclo per raccogliere gli ospiti extra (se presenti)
-    const num = document.getElementById('num_guests').value;
-    for (let i = 2; i <= num; i++) {
-        datiCheckin.ospiti_extra.push({
-            cognome: document.getElementById(`guest_${i}_lastname`).value,
-            nome: document.getElementById(`guest_${i}_firstname`).value,
-            nascita: document.getElementById(`guest_${i}_birthdate`).value
-        });
-    }
-
-    return datiCheckin;
-if (tuttoOk) {
-        const datiDaInviare = preparaInvioDati();
-
-        // Invia i dati al server Python
-        fetch('http://IL_TUO_INDIRIZZO_SERVER/salva_checkin', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(datiDaInviare)
-        })
-        .then(response => response.json())
-        .then(data => {
-            alert("Sincronizzazione completata: " + data.message);
-        })
-        .catch(error => {
-            console.error('Errore:', error);
-            alert("Errore nell'invio al server.");
-        });
-    }
 }
 
-
-
+/**
+ * FUNZIONE 4: INVIO DATI AL SERVER
+ */
 function inviaDatiAlServer() {
-    console.log("Avvio salvataggio...");
+    console.log("Inizio invio dati...");
     
     // Raccogliamo i dati dai campi del modulo
     const dati = {
-        nome: document.getElementById('firstname').value,
-        cognome: document.getElementById('lastname').value,
-        documento: document.getElementById('doc_number').value,
-        data_nascita: document.getElementById('birthdate').value,
-        sesso: document.getElementById('gender').value,
-        cittadinanza: document.getElementById('country').value
+        capogruppo: {
+            nome: document.getElementById('firstname').value,
+            cognome: document.getElementById('lastname').value,
+            nascita: document.getElementById('birthdate').value,
+            documento: document.getElementById('doc_number').value,
+            comune: document.getElementById('residence_city').value
+        }
     };
 
-    // Chiamata al server Flask
+    // Invio al server Python (Flask)
     fetch('/salva_checkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -338,17 +335,16 @@ function inviaDatiAlServer() {
         return response.json();
     })
     .then(res => {
-        alert("✅ Ospite " + dati.cognome + " salvato correttamente nel database!");
-        console.log("Risposta server:", res);
+        alert("✅ Dati salvati con successo!");
+        console.log("Risposta:", res);
     })
     .catch(err => {
-        console.error("Errore:", err);
-        alert("❌ Errore durante il salvataggio. Controlla che app.py sia acceso.");
+        console.error("Errore invio:", err);
+        alert("❌ Errore durante il salvataggio. Assicurati che app.py sia in esecuzione.");
     });
 }
 
-
-}</script>
+</script>
 
 </body>
 </html>
