@@ -117,7 +117,7 @@
 function gestisciOspitiExtra() {
     const container = document.getElementById('extra-guests-container');
     const num = parseInt(document.getElementById('num_guests').value);
-    container.innerHTML = ''; // Pulisce i campi precedenti
+    container.innerHTML = ''; 
 
     for (let i = 2; i <= num; i++) {
         container.innerHTML += `
@@ -125,18 +125,13 @@ function gestisciOspitiExtra() {
                 <h4>Dati Ospite ${i}</h4>
                 <div class="form-group">
                     <label>Cognome</label>
-                    <input type="text" id="guest_${i}_lastname" class="required-field" oninput="validaRequisitiFirma()">
+                    <input type="text" id="guest_${i}_lastname" class="required-field">
                 </div>
                 <div class="form-group">
                     <label>Nome</label>
-                    <input type="text" id="guest_${i}_firstname" class="required-field" oninput="validaRequisitiFirma()">
+                    <input type="text" id="guest_${i}_firstname" class="required-field">
                 </div>
-                <div class="form-group">
-                    <label>Data di Nascita</label>
-                    <input type="date" id="guest_${i}_birthdate" class="required-field" oninput="validaRequisitiFirma()">
-                </div>
-            </div>
-        `;
+            </div>`;
     }
 }
 
@@ -307,24 +302,20 @@ function parseFreeTextData(rawText) {
     });
 }
 
-/**
- * FUNZIONE 4: INVIO DATI AL SERVER
- */
 function inviaDatiAlServer() {
     console.log("Inizio invio dati...");
     
-    // Raccogliamo i dati dai campi del modulo
+    // Mappatura dati per corrispondere a quanto si aspetta app.py
     const dati = {
-        capogruppo: {
-            nome: document.getElementById('firstname').value,
-            cognome: document.getElementById('lastname').value,
-            nascita: document.getElementById('birthdate').value,
-            documento: document.getElementById('doc_number').value,
-            comune: document.getElementById('residence_city').value
-        }
+        nome: document.getElementById('firstname').value,
+        cognome: document.getElementById('lastname').value,
+        documento: document.getElementById('doc_number').value,
+        data_nascita: document.getElementById('birthdate').value,
+        sesso: document.getElementById('gender').value,
+        cittadinanza: document.getElementById('country').value
     };
 
-    // Invio al server Python (Flask)
+    // Usa l'indirizzo IP del tuo PC (es. 192.168.68.56) se il telefono non trova "localhost"
     fetch('/salva_checkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -335,12 +326,11 @@ function inviaDatiAlServer() {
         return response.json();
     })
     .then(res => {
-        alert("✅ Dati salvati con successo!");
-        console.log("Risposta:", res);
+        alert("✅ Salvataggio completato!");
     })
     .catch(err => {
         console.error("Errore invio:", err);
-        alert("❌ Errore durante il salvataggio. Assicurati che app.py sia in esecuzione.");
+        alert("❌ Errore: Controlla che il PC e il telefono siano sulla stessa rete WiFi.");
     });
 }
 
