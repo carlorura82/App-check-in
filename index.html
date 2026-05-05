@@ -415,7 +415,7 @@ function menuEliminaArticolo() {
         inviaARawBT(testo);
     }
 
-    function chiusura() {
+function chiusura() {
     // Controllo sicurezza: non procedere se l'archivio è vuoto
     if (archivioProforma.length === 0) return alert("Nessun dato in archivio per la chiusura.");
     if (!confirm("Effettuare la CHIUSURA giornaliera? I dati verranno azzerati.")) return;
