@@ -1,340 +1,102 @@
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner Documenti - Gestione Affittacamere</title>
-    
-    <!-- Libreria Tesseract.js per l'OCR -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
-    
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; line-height: 1.6; background-color: #f0f2f5; }
-        .container { max-width: 600px; margin: auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        h2 { color: #1a73e8; text-align: center; }
-        .scanner-area { background: #e8f0fe; padding: 20px; border-radius: 10px; margin-bottom: 25px; border: 2px dashed #1a73e8; text-align: center; }
-        .status-msg { font-weight: bold; margin-top: 10px; color: #1a73e8; min-height: 24px; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; font-weight: bold; margin-bottom: 8px; color: #444; }
-        input { width: 100%; padding: 12px; border: 1px solid #bdc1c6; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
-        #debug-text { background: #202124; color: #34a853; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 12px; overflow-x: auto; margin-top: 20px; white-space: pre-wrap; }
-        .btn-save { background-color: #1a73e8; color: white; padding: 15px; border: none; border-radius: 8px; width: 100%; font-size: 18px; margin-top: 20px; cursor: pointer; }
-        .btn-save:hover { background-color: #1557b0; }
-    </style>
-</head>
-<body>
+import os
+from datetime import datetime
+from flask import Flask, request, jsonify, render_template
+from flask_sqlalchemy import SQLAlchemy  # Fondamentale per il database
 
-<div class="container">
-    <h2>Check-in Rapido</h2>
-    
-    <!-- Area scanner Ottimizzata per Smartphone -->
-    <div class="scanner-area">
-        <label for="ocr-upload" style="cursor: pointer; display: block;">
-            <span style="font-size: 50px;">📸</span><br>
-            <strong>Tocca qui per SCATTARE UNA FOTO</strong><br>
-            <small>(Retro o Frontale del documento)</small>
-        </label>
-        <input type="file" id="ocr-upload" accept="image/*" capture="camera" onchange="processOCR(this)" style="display: none;">
-        <div id="ocr-status" class="status-msg">Pronto per la scansione</div>
-    </div>
+app = Flask(__name__)
 
-    <!-- Campi Modulo -->
-    <div class="form-group">
-        <label>Cognome</label>
-        <input type="text" id="lastname">
-    </div>
-    <div class="form-group">
-        <label>Nome</label>
-        <input type="text" id="firstname">
-    </div>
-    <div class="form-group">
-        <label>Data di Nascita</label>
-        <input type="date" id="birthdate">
-    </div>
-    <div class="form-group">
-        <label>Sesso</label>
-        <input type="text" id="gender">
-    </div>
-    <div class="form-group">
-        <label>Cittadinanza</label>
-        <input type="text" id="country">
-    </div>
-    <div class="form-group">
-        <label>Comune di Residenza</label>
-        <input type="text" id="residence_city">
-    </div>
-    <div class="form-group">
-        <label>Numero Documento</label>
-        <input type="text" id="doc_number">
-    </div>
-    <div class="form-group">
-        <label>Tipo Documento</label>
-        <input type="text" id="doc_type">
-    </div>
-    <!-- Dati del Soggiorno -->
-<!-- DATI DEL SOGGIORNO -->
-<div class="form-group" style="background: #e3f2fd; padding: 15px; border-radius: 10px; margin-top: 20px;">
-    <h3>Dati Soggiorno</h3>
-    <label>Data Arrivo</label>
-    <input type="date" id="checkin_date" required oninput="validaRequisitiFirma()">
-    <label>Data Partenza</label>
-    <input type="date" id="checkout_date" required oninput="validaRequisitiFirma()">
-    
-    <label>Numero Totale Persone</label>
-    <input type="number" id="num_guests" value="1" min="1" max="10" onchange="gestisciOspitiExtra(); validaRequisitiFirma()">
-</div>
+# --- CONFIGURAZIONE PERCORSI E CARTELLE ---
+# Cartella per i file di testo Pegaso
+EXPORT_FOLDER = 'esportazioni_pegaso'
+if not os.path.exists(EXPORT_FOLDER):
+    os.makedirs(EXPORT_FOLDER)
 
-<!-- CONTENITORE OSPITI EXTRA -->
-<div id="extra-guests-container"></div>
+# Percorso per il database SQLite
+basedir = os.path.abspath(os.path.dirname(__file__))
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'gestionale.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-<!-- AREA PRIVACY E FIRMA -->
-<div class="form-group" style="margin-top: 30px; padding: 15px; border: 2px solid #bdc1c6; border-radius: 10px;">
-    <h3>Consenso e Firma</h3>
-    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-        <input type="checkbox" id="privacy_check" onchange="validaRequisitiFirma()"> 
-        Accetto il trattamento dei dati personali (GDPR)
-    </label>
+# Inizializziamo il database
+db = SQLAlchemy(app)
 
-    <div id="signature-wrapper" style="margin-top: 15px; opacity: 0.3; pointer-events: none;">
-        <label>Firma del Capogruppo</label>
-        <canvas id="signature-pad" width="400" height="150" style="border: 1px dashed #000; background: #fff; width: 100%; touch-action: none;"></canvas>
-        <button type="button" onclick="pulisciFirma()" style="width: auto; background: #95a5a6; padding: 5px 10px; font-size: 12px;">Cancella Firma</button>
-    </div>
-    <p id="firma-warning" style="color: #e74c3c; font-size: 13px;">Compila tutti i campi e accetta la privacy per poter firmare.</p>
-</div>
+# --- MODELLO DATABASE ---
+# Questa classe definisce come verranno salvati i dati nel file gestionale.db
+class Ospite(db.Model):
+    id = db.Column(db.Integer, primary_key=True) # Identificativo unico progressivo
+    nome = db.Column(db.String(80))
+    cognome = db.Column(db.String(80))
+    documento = db.Column(db.String(20))
+    data_nascita = db.Column(db.String(20))     # Nuovo: salva la data letta dall'OCR
+    sesso = db.Column(db.String(1))             # Nuovo: M o F
+    cittadinanza = db.Column(db.String(50))     # Nuovo: es. ITALIA
+    data_arrivo = db.Column(db.DateTime, default=datetime.utcnow) # Data di sistema
+# Crea il database se non esiste
+with app.app_context():
+    db.create_all()
 
-    <button type="button" class="btn-save" onclick="inviaDatiAlServer()">
-        💾 Salva nel Gestionale
-    </button>
+# --- ROTTE ---
 
-    <h4 style="margin-top:30px;">Dati Grezzi Letti:</h4>
-    <div id="debug-text">Nessun dato analizzato.</div>
-</div>
+@app.route('/')
+def home():
+    # Carica la tua pagina principale index.html
+    return render_template('index.html')
 
-<script>
-    // Gestisce la comparsa di nuovi campi se ci sono più ospiti
-// 1. Gestisce la creazione dinamica dei campi per gli ospiti aggiuntivi
-function gestisciOspitiExtra() {
-    const container = document.getElementById('extra-guests-container');
-    const num = parseInt(document.getElementById('num_guests').value);
-    container.innerHTML = ''; 
-
-    for (let i = 2; i <= num; i++) {
-        container.innerHTML += `
-            <div class="guest-extra" style="border-top: 2px solid #1a73e8; margin-top: 20px; padding-top: 10px;">
-                <h4>Dati Ospite ${i}</h4>
-                <div class="form-group">
-                    <label>Cognome</label>
-                    <input type="text" id="guest_${i}_lastname" class="required-field">
-                </div>
-                <div class="form-group">
-                    <label>Nome</label>
-                    <input type="text" id="guest_${i}_firstname" class="required-field">
-                </div>
-            </div>`;
-    }
-}
-
-// 2. FUNZIONE CRUCIALE: Controlla campi vuoti e checkbox per abilitare la firma
-function validaRequisitiFirma() {
-    const privacyOk = document.getElementById('privacy_check').checked;
-    const checkin = document.getElementById('checkin_date').value;
-    const checkout = document.getElementById('checkout_date').value;
-    const capogruppoNome = document.getElementById('firstname').value;
-    const capogruppoCognome = document.getElementById('lastname').value;
-
-    // Controlla anche se gli ospiti extra hanno i campi pieni
-    const campiExtra = document.querySelectorAll('.required-field');
-    let extraOk = true;
-    campiExtra.forEach(campo => { if(campo.value.trim() === "") extraOk = false; });
-
-    const wrapper = document.getElementById('signature-wrapper');
-    const warning = document.getElementById('firma-warning');
-
-    if (privacyOk && checkin && checkout && capogruppoNome && capogruppoCognome && extraOk) {
-        wrapper.style.opacity = "1";
-        wrapper.style.pointerEvents = "auto";
-        warning.style.display = "none";
-    } else {
-        wrapper.style.opacity = "0.3";
-        wrapper.style.pointerEvents = "none";
-        warning.style.display = "block";
-    }
-}
-
-
-
-
-
-const canvas = document.getElementById('signature-pad');
-const ctx = canvas.getContext('2d');
-let drawing = false;
-
-canvas.addEventListener('mousedown', () => drawing = true);
-canvas.addEventListener('mouseup', () => { drawing = false; ctx.beginPath(); });
-canvas.addEventListener('mousemove', (e) => {
-    if (!drawing) return;
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.lineTo(e.offsetX, e.offsetY);
-    ctx.stroke();
-    });
-    
-
-function disegna(e) {
-    if (!drawing) return;
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.lineTo(e.offsetX, e.offsetY);
-    ctx.stroke();
-}
-
-function pulisciFirma() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-}
-
-async function processOCR(input) {
-    const status = document.getElementById('ocr-status');
-    const debug = document.getElementById('debug-text');
-    
-    if (!input.files || !input.files[0]) return;
-
-    status.innerText = "⏳ Caricamento motore di analisi...";
-    debug.innerText = "Analisi avviata...";
-
-    try {
-        const worker = await Tesseract.createWorker({
-            logger: m => {
-                if(m.status === 'recognizing text') {
-                    status.innerText = `⏳ Analisi: ${Math.round(m.progress * 100)}%`;
-                }
-            }
-        });
-
-        await worker.loadLanguage('ita');
-        await worker.initialize('ita');
+@app.route('/salva_checkin', methods=['POST'])
+def salva_checkin():
+    try:
+        # Recuperiamo i dati inviati dal modulo (nome, cognome, ecc.)
+        dati = request.json
         
-        const { data: { text } } = await worker.recognize(input.files[0]);
+        # 1. SALVATAGGIO NEL DATABASE
+        # Creiamo l'oggetto Ospite usando le chiavi inviate dal JS di index_3.html
+        nuovo_ospite = Ospite(
+            nome=dati.get('nome', '').upper(),
+            cognome=dati.get('cognome', '').upper(),
+            documento=dati.get('documento', '').upper(),
+            data_nascita=dati.get('data_nascita', ''),
+            sesso=dati.get('sesso', 'M'),
+            cittadinanza=dati.get('cittadinanza', 'ITALIA')
+        )
+        db.session.add(nuovo_ospite)
+        db.session.commit()
+
+        # 2. GENERAZIONE FILE PEGASO (TXT)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        nome_file = f"export_pegaso_{timestamp}.txt"
+        percorso_completo = os.path.join(EXPORT_FOLDER, nome_file)
+
+        with open(percorso_completo, "w", encoding="utf-8") as f:
+            # Scriviamo i dati separati da punto e virgola
+            riga = (
+                f"{dati.get('cognome','')};{dati.get('nome','')};"
+                f"{dati.get('data_nascita','')};{dati.get('sesso','')};"
+                f"{dati.get('cittadinanza','')};{dati.get('documento','')}\n"
+            )
+            f.write(riga.upper())
+
+        print(f"✅ Successo! Creato file: {nome_file}") # Lo vedi nel terminale del PC
         
-        // Visualizziamo il testo grezzo per debug
-        debug.innerText = text;
+        return jsonify({
+            "status": "success",
+            "message": f"Ospite {dati.get('cognome')} registrato!"
+        })
 
-        // --- LOGICA DI SMISTAMENTO ---
-        // Se il testo contiene "<<", usiamo la funzione MRZ (Retro/Passaporto)
-        // Altrimenti usiamo la funzione Testo Libero (Frontale)
-        if (text.includes("<<")) {
-            console.log("Rilevato formato MRZ");
-            parseMRZData(text); 
-        } else {
-            console.log("Rilevato formato Testo Libero");
-            parseFreeTextData(text);
-        }
+    except Exception as e:
+        # Questo cattura l'errore e lo stampa per aiutarci a capire cosa non va
+        print(f"❌ ERRORE SERVER: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+@app.route('/admin')
+def admin_panel():
+    # Visualizza i dati salvati nel database
+    lista_ospiti = Ospite.query.all()
+    html = "<h1>Registro Ospiti Digitali</h1><table border='1' style='width:100%; text-align:left;'>"
+    html += "<tr><th>ID</th><th>Nome</th><th>Cognome</th><th>Documento</th><th>Data Arrivo</th></tr>"
+    for o in lista_ospiti:
+        html += f"<tr><td>{o.id}</td><td>{o.nome}</td><td>{o.cognome}</td><td>{o.documento}</td><td>{o.data_arrivo.strftime('%Y-%m-%d %H:%M')}</td></tr>"
+    html += "</table><br><a href='/'>Torna al modulo</a>"
+    return html
 
-        await worker.terminate();
-        status.innerText = "✅ Elaborazione completata";
-
-    } catch (error) {
-        console.error("Errore OCR:", error);
-        status.innerText = "❌ Errore durante l'analisi del documento";
-    }
-}
-
-
-/**
- * FUNZIONE 2: Logica MRZ (Retro/Passaporto)
- */
-function parseMRZData(rawText) {
-    const fullText = rawText.toUpperCase();
-    const lines = fullText.split('\n').map(l => l.trim().replace(/\s/g, ''));
-    const mrzLines = lines.filter(l => l.includes('<<'));
-
-    if (mrzLines.length >= 2) {
-        const rigaDoc = mrzLines.find(l => l.startsWith('C<') || l.startsWith('CA') || l.startsWith('P<'));
-        const rigaDati = mrzLines.find(l => l.match(/^\d{6}/));
-        const rigaNomi = mrzLines.find(l => l.includes('<<') && !l.match(/\d{5,}/));
-
-        if (rigaNomi) {
-            const parts = rigaNomi.split('<<');
-            document.getElementById('lastname').value = parts[0].replace(/[^A-Z]/g, '');
-            document.getElementById('firstname').value = parts[1] ? parts[1].replace(/[^A-Z]/g, '') : '';
-        }
-
-        if (rigaDati) {
-            const yy = rigaDati.substring(0, 2);
-            const mm = rigaDati.substring(2, 4);
-            const dd = rigaDati.substring(4, 6);
-            const annoPrefisso = (parseInt(yy) > 25 ? "19" : "20");
-            document.getElementById('birthdate').value = `${annoPrefisso}${yy}-${mm}-${dd}`;
-            document.getElementById('gender').value = rigaDati.substring(7, 8);
-            
-            let nazione = rigaDati.substring(15, 18);
-            if (nazione === "1TA" || nazione === "IT4" || nazione === "ITA") {
-                document.getElementById('country').value = "ITALIA";
-            } else {
-                document.getElementById('country').value = nazione; 
-            }
-        }
-
-        if (rigaDoc) {
-            document.getElementById('doc_number').value = rigaDoc.substring(5, 14).replace(/</g, '');
-            const primoCarattere = rigaDoc.substring(0, 1);
-            document.getElementById('doc_type').value = (primoCarattere === 'P') ? "PASSAPORTO" : "CARTA IDENTITA'";
-        }
-    }
-}
-
-
-/**
- * FUNZIONE 3: Logica Testo Libero (Frontale)
- */
-function parseFreeTextData(rawText) {
-    const lines = rawText.replace(/[|\\/_]/g, ' ').split('\n').map(l => l.trim());
-    lines.forEach((line, index) => {
-        const uLine = line.toUpperCase();
-        if ((uLine.includes("COGNOME") || uLine.includes("SURNAME")) && lines[index + 1]) {
-            document.getElementById('lastname').value = lines[index + 1].replace(/[^A-Z]/g, '').trim();
-        }
-        if ((uLine.includes("NOME") || uLine.includes("NAME")) && lines[index + 1]) {
-            document.getElementById('firstname').value = lines[index + 1].replace(/[^A-Z]/g, '').trim();
-        }
-        const docMatch = uLine.match(/[A-Z]{2}\d{5}[A-Z]{2}/);
-        if (docMatch) document.getElementById('doc_number').value = docMatch[0];
-    });
-}
-
-function inviaDatiAlServer() {
-    console.log("Inizio invio dati...");
-    
-    // Mappatura dati per corrispondere a quanto si aspetta app.py
-    const dati = {
-        nome: document.getElementById('firstname').value,
-        cognome: document.getElementById('lastname').value,
-        documento: document.getElementById('doc_number').value,
-        data_nascita: document.getElementById('birthdate').value,
-        sesso: document.getElementById('gender').value,
-        cittadinanza: document.getElementById('country').value
-    };
-
-    // Usa l'indirizzo IP del tuo PC (es. 192.168.68.56) se il telefono non trova "localhost"
-    fetch('/salva_checkin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dati)
-    })
-    .then(response => {
-        if (!response.ok) throw new Error("Errore del server");
-        return response.json();
-    })
-    .then(res => {
-        alert("✅ Salvataggio completato!");
-    })
-    .catch(err => {
-        console.error("Errore invio:", err);
-        alert("❌ Errore: Controlla che il PC e il telefono siano sulla stessa rete WiFi.");
-    });
-}
-
-</script>
-
-</body>
-</html>
+# --- AVVIO SERVER ---
+if __name__ == '__main__':
+    # host='0.0.0.0' è essenziale per l'accesso da smartphone (192.168.68.58)
+    app.run(debug=True, host='0.0.0.0', port=5000)
